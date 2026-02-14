@@ -2913,7 +2913,8 @@ def import_admin_scores():
     processed_ids = set()
 
     # --- Step 4: 遍历并进行身份三维匹配 (内存中校验) ---
-    pending_scores = []  # 待写入的数据列表
+    # 待写入数据，按 (student_id, exam_task_id) 去重，避免 Excel 重复行导致重复统计
+    pending_score_map = {}
 
     for index, row in df.iterrows():
         row_num = index + 2
@@ -2996,17 +2997,15 @@ def import_admin_scores():
                     )
 
             # 加入待写入队列
-            pending_scores.append(
-                {
-                    "student_id": stu_obj.id,
-                    "exam_task_id": task.id,
-                    "subject_id": task.subject_id,
-                    "score": score_val,
-                    "remark": remark_val,
-                    "term": task.name,
-                    "class_id_snapshot": stu_obj.class_id,
-                }
-            )
+            pending_score_map[(stu_obj.id, task.id)] = {
+                "student_id": stu_obj.id,
+                "exam_task_id": task.id,
+                "subject_id": task.subject_id,
+                "score": score_val,
+                "remark": remark_val,
+                "term": task.name,
+                "class_id_snapshot": stu_obj.class_id,
+            }
 
     # --- Step 5: 决策 (原子性写入) ---
 
@@ -3042,7 +3041,9 @@ def import_admin_scores():
         # 涉及到的所有任务
         relevant_task_ids = [task_map[n].id for n in valid_subject_cols]
         # 涉及到的所有学生
-        relevant_stu_ids = [p["student_id"] for p in pending_scores]
+        relevant_stu_ids = list(
+            {p["student_id"] for p in pending_score_map.values()}
+        )
 
         existing_scores = Score.query.filter(
             Score.exam_task_id.in_(relevant_task_ids),
@@ -3051,16 +3052,24 @@ def import_admin_scores():
 
         existing_map = {(es.student_id, es.exam_task_id): es for es in existing_scores}
 
-        for item in pending_scores:
+        for item in pending_score_map.values():
             key = (item["student_id"], item["exam_task_id"])
             if key in existing_map:
                 # 更新
                 sc = existing_map[key]
-                if sc.score != item["score"] or sc.remark != item["remark"]:
+                old_score = float(sc.score) if sc.score is not None else 0.0
+                new_score = float(item["score"]) if item["score"] is not None else 0.0
+                old_remark = (sc.remark or "").strip()
+                new_remark = (item["remark"] or "").strip()
+
+                score_changed = abs(old_score - new_score) > 1e-6
+                remark_changed = old_remark != new_remark
+
+                if score_changed or remark_changed:
                     if key not in before_scores:
                         before_scores[key] = _serialize_score(sc)
-                    sc.score = item["score"]
-                    sc.remark = item["remark"]
+                    sc.score = new_score
+                    sc.remark = new_remark
                     updated_count += 1
             else:
                 # 新增
@@ -3068,8 +3077,8 @@ def import_admin_scores():
                     student_id=item["student_id"],
                     subject_id=item["subject_id"],
                     exam_task_id=item["exam_task_id"],
-                    score=item["score"],
-                    remark=item["remark"],
+                    score=float(item["score"]) if item["score"] is not None else 0.0,
+                    remark=(item["remark"] or "").strip(),
                     term=item["term"],
                     class_id_snapshot=item.get("class_id_snapshot"),
                 )
