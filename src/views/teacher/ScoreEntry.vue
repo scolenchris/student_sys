@@ -254,14 +254,19 @@ const handleExamChange = async (examId) => {
 const saveAllScores = async () => {
   saving.value = true;
   try {
-    await saveScores({
+    const res = await saveScores({
       exam_task_id: selectedExamId.value,
       scores: students.value.map((s) => ({
         student_id: s.student_id,
         score: s.score,
       })),
     });
-    ElMessage.success("保存成功");
+    const data = res?.data || {};
+    if ((data.missing_count || 0) > 0 || (data.invalid_count || 0) > 0) {
+      ElMessage.warning(data.msg || "部分成绩未填写，已保存已填写项");
+    } else {
+      ElMessage.success(data.msg || "保存成功");
+    }
   } catch (err) {
     ElMessage.error(err.response?.data?.msg || "保存失败");
   } finally {

@@ -123,6 +123,11 @@ def save_scores():
     if not task.is_active:
         return jsonify({"msg": "该考试录入通道已关闭，无法保存"}), 403
 
+    missing_count = 0
+    invalid_count = 0
+    updated_count = 0
+    added_count = 0
+
     for item in scores_data:
         raw_val = item["score"]
 
@@ -130,20 +135,25 @@ def save_scores():
         final_score = 0.0
         final_remark = ""
 
-        # 允许前端传 null 或 空串
-        if raw_val is None or raw_val == "":
-            # 如果是空，根据需求可能是不录入，或者归零。这里假设不做修改或设为0
-            # 简单起见，空值不更新，或者视为0
+        # 允许前端传 null 或 空串；未填写项仅警告，不阻断整体保存
+        if raw_val is None:
+            missing_count += 1
             continue
 
-        if str(raw_val).strip() == "缺考":
+        val_str = str(raw_val).strip()
+        if val_str == "":
+            missing_count += 1
+            continue
+
+        if val_str == "缺考":
             final_score = 0.0
             final_remark = "缺考"
         else:
             try:
-                final_score = float(raw_val)
+                final_score = float(val_str)
                 final_remark = ""  # 正常分数清空备注
             except ValueError:
+                invalid_count += 1
                 continue  # 格式非法跳过
 
         existing_score = Score.query.filter_by(
@@ -153,6 +163,7 @@ def save_scores():
         if existing_score:
             existing_score.score = final_score
             existing_score.remark = final_remark
+            updated_count += 1
         else:
             new_score = Score(
                 student_id=item["student_id"],
@@ -163,9 +174,37 @@ def save_scores():
                 remark=final_remark,
             )
             db.session.add(new_score)
+            added_count += 1
 
     db.session.commit()
-    return jsonify({"msg": "成绩保存成功"})
+
+    if missing_count > 0 or invalid_count > 0:
+        msg = (
+            f"已保存（新增 {added_count}，更新 {updated_count}）。"
+            f" 仍有 {missing_count} 项未填写"
+        )
+        if invalid_count > 0:
+            msg += f"，{invalid_count} 项格式不合法已跳过"
+        msg += "。"
+        return jsonify(
+            {
+                "msg": msg,
+                "missing_count": missing_count,
+                "invalid_count": invalid_count,
+                "added_count": added_count,
+                "updated_count": updated_count,
+            }
+        )
+
+    return jsonify(
+        {
+            "msg": f"成绩保存成功（新增 {added_count}，更新 {updated_count}）",
+            "missing_count": 0,
+            "invalid_count": 0,
+            "added_count": added_count,
+            "updated_count": updated_count,
+        }
+    )
 
 
 # --- 获取某班级某科目可用的考试任务 ---
