@@ -1,0 +1,114 @@
+# --- 字节码缓存 ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- 虚拟环境 ---
+.venv/
+venv/
+ENV/
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- 单元测试/覆盖率 ---
+htmlcov/
+.tox/
+.nosetests/
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# --- 环境变量与密钥 (重要！) ---
+.env
+.venv
+env.bak
+*.local
+*.secret
+
+# --- IDE/编辑器配置 ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings/
+
+# --- 操作系统临时文件 ---
+.DS_Store
+Thumbs.db
+.lh
+school.db
+school.db-shm
+school.db-wal
+
+# --- 依赖包 ---
+node_modules/
+/dist/
+/dist-ssr/
+*.local
+
+# --- 日志文件 ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- 编辑器/IDE 配置 ---
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# --- 测试相关 ---
+/tests/unit/coverage/
+/tests/e2e/reports/
+/tests/e2e/videos/
+/tests/e2e/screenshots/
+.nyc_output/
+.cypress/
+
+# --- 操作系统文件 ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- 环境变量 (非常重要) ---
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# --- 其他 ---
+/public/hot
+package-lock.json
+# 如果你使用 yarn 或 pnpm，可以选择保留 lock 文件或忽略
+# yarn.lock
+# pnpm-lock.yaml
+.lh
