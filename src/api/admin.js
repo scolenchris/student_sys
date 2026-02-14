@@ -115,6 +115,10 @@ export const getSystemSettings = () => api.get("/system/settings");
 export const updateSystemSettings = (data) =>
   api.post("/system/settings", data);
 
+// --- 导入记录与回退 ---
+export const getImportHistory = (params) => api.get("/imports/history", { params });
+export const rollbackImportBatch = (id) => api.post(`/imports/${id}/rollback`);
+
 // --- 管理员成绩录入专用接口 ---
 // 1. 根据班级ID获取该班级能参加的所有考试 (带科目名)
 export const getAdminClassExams = (params) =>

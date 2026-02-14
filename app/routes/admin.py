@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, send_file, current_app
 import pandas as pd
 import os
+import json
 from app.models import (
     db,
     User,
@@ -11,6 +12,7 @@ from app.models import (
     Student,
     Score,
     SystemSetting,
+    ImportBatch,
 )
 from app.models import (
     HeadTeacherAssignment,
@@ -43,6 +45,310 @@ SUBJECT_PRIORITY = [
     "美术",
     "音乐",
 ]
+
+IMPORT_TYPE_LABELS = {
+    "student": "学生名单",
+    "teacher": "教师信息",
+    "course_assign": "任课分配",
+    "score": "成绩",
+}
+
+
+def _json_dumps(data):
+    return json.dumps(data, ensure_ascii=False)
+
+
+def _json_loads(raw, default):
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default
+
+
+def _serialize_user(user):
+    return {
+        "username": user.username,
+        "real_name": user.real_name,
+        "role": user.role,
+        "is_approved": bool(user.is_approved),
+        "must_change_password": bool(user.must_change_password),
+        "password_hash": user.password_hash,
+    }
+
+
+def _serialize_teacher(teacher):
+    return {
+        "user_id": teacher.user_id,
+        "name": teacher.name,
+        "gender": teacher.gender,
+        "ethnicity": teacher.ethnicity,
+        "phone": teacher.phone,
+        "status": teacher.status,
+        "job_title": teacher.job_title,
+        "education": teacher.education,
+        "major": teacher.major,
+        "remarks": teacher.remarks,
+    }
+
+
+def _serialize_student(student):
+    return {
+        "student_id": student.student_id,
+        "name": student.name,
+        "gender": student.gender,
+        "class_id": student.class_id,
+        "status": student.status,
+        "household_registration": student.household_registration,
+        "city_school_id": student.city_school_id,
+        "national_school_id": student.national_school_id,
+        "id_card_number": student.id_card_number,
+        "remarks": student.remarks,
+    }
+
+
+def _serialize_score(score):
+    return {
+        "student_id": score.student_id,
+        "exam_task_id": score.exam_task_id,
+        "subject_id": score.subject_id,
+        "score": score.score,
+        "remark": score.remark,
+        "term": score.term,
+        "class_id_snapshot": score.class_id_snapshot,
+    }
+
+
+def _create_import_batch(import_type, source_filename, scope, summary, snapshot):
+    batch = ImportBatch(
+        import_type=import_type,
+        source_filename=(source_filename or "")[:255],
+        scope_json=_json_dumps(scope or {}),
+        summary_json=_json_dumps(summary or {}),
+        snapshot_json=_json_dumps(snapshot or {}),
+        can_rollback=True,
+    )
+    db.session.add(batch)
+    return batch
+
+
+def _rollback_students(snapshot):
+    before_students = snapshot.get("before_students", [])
+    created_student_ids = snapshot.get("created_student_ids", [])
+    created_class_ids = snapshot.get("created_class_ids", [])
+
+    before_sid_set = {item.get("student_id") for item in before_students if item.get("student_id")}
+
+    for sid in created_student_ids:
+        if sid in before_sid_set:
+            continue
+        stu = Student.query.filter_by(student_id=sid).first()
+        if not stu:
+            continue
+        if Score.query.filter_by(student_id=stu.id).first():
+            raise ValueError(f"学生 {sid} 已产生后续成绩数据，无法自动删除，请先清理相关成绩。")
+        db.session.delete(stu)
+
+    for data in before_students:
+        sid = data.get("student_id")
+        if not sid:
+            continue
+
+        stu = Student.query.filter_by(student_id=sid).first()
+        if not stu:
+            stu = Student(student_id=sid)
+            db.session.add(stu)
+
+        stu.name = data.get("name", "")
+        stu.gender = data.get("gender", "男")
+        stu.class_id = data.get("class_id")
+        stu.status = data.get("status", "在读")
+        stu.household_registration = data.get("household_registration")
+        stu.city_school_id = data.get("city_school_id")
+        stu.national_school_id = data.get("national_school_id")
+        stu.id_card_number = data.get("id_card_number")
+        stu.remarks = data.get("remarks")
+
+    for item in created_class_ids:
+        class_id = item.get("id")
+        if not class_id:
+            continue
+        cls = ClassInfo.query.get(class_id)
+        if not cls:
+            continue
+        if cls.students.count() > 0:
+            continue
+        if HeadTeacherAssignment.query.filter_by(class_id=cls.id).first():
+            continue
+        if CourseAssignment.query.filter_by(class_id=cls.id).first():
+            continue
+        db.session.delete(cls)
+
+
+def _rollback_teacher(snapshot, scope):
+    academic_year = scope.get("academic_year")
+    if not academic_year:
+        raise ValueError("教师导入记录缺少学年信息，无法回退。")
+
+    before_assignments = snapshot.get("before_assignments", {})
+    before_users = snapshot.get("before_users", [])
+    before_teachers = snapshot.get("before_teachers", [])
+    created_usernames = snapshot.get("created_usernames", [])
+    created_teacher_user_ids = snapshot.get("created_teacher_user_ids", [])
+
+    db.session.query(GradeLeaderAssignment).filter_by(academic_year=academic_year).delete()
+    db.session.query(SubjectGroupLeaderAssignment).filter_by(
+        academic_year=academic_year
+    ).delete()
+    db.session.query(PrepGroupLeaderAssignment).filter_by(academic_year=academic_year).delete()
+
+    for item in before_assignments.get("grade", []):
+        db.session.add(
+            GradeLeaderAssignment(
+                teacher_id=item["teacher_id"],
+                entry_year=item["entry_year"],
+                academic_year=item["academic_year"],
+            )
+        )
+    for item in before_assignments.get("subject", []):
+        db.session.add(
+            SubjectGroupLeaderAssignment(
+                teacher_id=item["teacher_id"],
+                subject_id=item["subject_id"],
+                academic_year=item["academic_year"],
+            )
+        )
+    for item in before_assignments.get("prep", []):
+        db.session.add(
+            PrepGroupLeaderAssignment(
+                teacher_id=item["teacher_id"],
+                entry_year=item["entry_year"],
+                subject_id=item["subject_id"],
+                academic_year=item["academic_year"],
+            )
+        )
+
+    before_usernames = set()
+    for item in before_users:
+        username = item.get("username")
+        if not username:
+            continue
+        before_usernames.add(username)
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            user = User(username=username)
+            db.session.add(user)
+        user.real_name = item.get("real_name")
+        user.role = item.get("role", "teacher")
+        user.is_approved = bool(item.get("is_approved", False))
+        user.must_change_password = bool(item.get("must_change_password", False))
+        user.password_hash = item.get("password_hash")
+
+    before_teacher_user_ids = set()
+    for item in before_teachers:
+        user_id = item.get("user_id")
+        if not user_id:
+            continue
+        before_teacher_user_ids.add(user_id)
+        teacher = Teacher.query.filter_by(user_id=user_id).first()
+        if not teacher:
+            teacher = Teacher(user_id=user_id, name=item.get("name", ""))
+            db.session.add(teacher)
+        teacher.name = item.get("name", "")
+        teacher.gender = item.get("gender", "男")
+        teacher.ethnicity = item.get("ethnicity", "汉族")
+        teacher.phone = item.get("phone")
+        teacher.status = item.get("status", "在职")
+        teacher.job_title = item.get("job_title")
+        teacher.education = item.get("education")
+        teacher.major = item.get("major")
+        teacher.remarks = item.get("remarks")
+
+    for user_id in created_teacher_user_ids:
+        if user_id in before_teacher_user_ids:
+            continue
+        teacher = Teacher.query.filter_by(user_id=user_id).first()
+        if not teacher:
+            continue
+        if HeadTeacherAssignment.query.filter_by(teacher_id=teacher.id).first():
+            raise ValueError(f"教师 {teacher.name} 已有后续班主任分配，无法自动删除。")
+        if CourseAssignment.query.filter_by(teacher_id=teacher.id).first():
+            raise ValueError(f"教师 {teacher.name} 已有后续任课分配，无法自动删除。")
+        if GradeLeaderAssignment.query.filter_by(teacher_id=teacher.id).first():
+            raise ValueError(f"教师 {teacher.name} 已有后续级长分配，无法自动删除。")
+        if SubjectGroupLeaderAssignment.query.filter_by(teacher_id=teacher.id).first():
+            raise ValueError(f"教师 {teacher.name} 已有后续科组长分配，无法自动删除。")
+        if PrepGroupLeaderAssignment.query.filter_by(teacher_id=teacher.id).first():
+            raise ValueError(f"教师 {teacher.name} 已有后续备课组分配，无法自动删除。")
+        db.session.delete(teacher)
+
+    for username in created_usernames:
+        if username in before_usernames:
+            continue
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            continue
+        if user.teacher_profile:
+            raise ValueError(f"账号 {username} 已关联教师档案，无法自动删除。")
+        db.session.delete(user)
+
+
+def _rollback_course_assign(snapshot, scope):
+    academic_year = scope.get("academic_year")
+    if not academic_year:
+        raise ValueError("任课导入记录缺少学年信息，无法回退。")
+
+    db.session.query(CourseAssignment).filter_by(academic_year=academic_year).delete()
+    db.session.query(HeadTeacherAssignment).filter_by(academic_year=academic_year).delete()
+
+    for item in snapshot.get("before_course_assignments", []):
+        db.session.add(
+            CourseAssignment(
+                teacher_id=item["teacher_id"],
+                class_id=item["class_id"],
+                subject_id=item["subject_id"],
+                academic_year=item["academic_year"],
+            )
+        )
+    for item in snapshot.get("before_head_teacher_assignments", []):
+        db.session.add(
+            HeadTeacherAssignment(
+                teacher_id=item["teacher_id"],
+                class_id=item["class_id"],
+                academic_year=item["academic_year"],
+            )
+        )
+
+
+def _rollback_score(snapshot):
+    before_scores = snapshot.get("before_scores", [])
+    created_scores = snapshot.get("created_scores", [])
+
+    for key in created_scores:
+        sid = key.get("student_id")
+        tid = key.get("exam_task_id")
+        if sid is None or tid is None:
+            continue
+        rows = Score.query.filter_by(student_id=sid, exam_task_id=tid).all()
+        for row in rows:
+            db.session.delete(row)
+
+    for item in before_scores:
+        sid = item.get("student_id")
+        tid = item.get("exam_task_id")
+        if sid is None or tid is None:
+            continue
+        row = Score.query.filter_by(student_id=sid, exam_task_id=tid).first()
+        if not row:
+            row = Score(student_id=sid, exam_task_id=tid)
+            db.session.add(row)
+
+        row.subject_id = item.get("subject_id")
+        row.score = item.get("score", 0.0)
+        row.remark = item.get("remark", "")
+        row.term = item.get("term")
+        row.class_id_snapshot = item.get("class_id_snapshot")
 
 # --- 1. 用户审核模块 ---
 
@@ -846,6 +1152,9 @@ def import_students_excel():
         success_count = 0
         updated_count = 0
         warnings = []  # 用于收集非阻断性问题
+        before_students = {}
+        created_student_ids = []
+        created_class_ids = []
 
         # 班级正则
         class_pattern = re.compile(r"(\d+)级\s*[（\(](\d+)[）\)]\s*班")
@@ -878,6 +1187,9 @@ def import_students_excel():
                     cls = ClassInfo(entry_year=entry_year, class_num=class_num)
                     db.session.add(cls)
                     db.session.flush()  # 立即获取ID
+                    created_class_ids.append(
+                        {"id": cls.id, "entry_year": entry_year, "class_num": class_num}
+                    )
                 class_id = cls.id
             else:
                 warnings.append(
@@ -900,6 +1212,9 @@ def import_students_excel():
             if not student:
                 student = Student(student_id=student_id)
                 is_new = True
+                created_student_ids.append(student_id)
+            elif student_id not in before_students:
+                before_students[student_id] = _serialize_student(student)
 
             # 3. 更新基础信息
             student.name = name
@@ -939,6 +1254,21 @@ def import_students_excel():
             else:
                 updated_count += 1
 
+        _create_import_batch(
+            import_type="student",
+            source_filename=file.filename,
+            scope={},
+            summary={
+                "added": success_count,
+                "updated": updated_count,
+                "warning_count": len(warnings),
+            },
+            snapshot={
+                "before_students": list(before_students.values()),
+                "created_student_ids": created_student_ids,
+                "created_class_ids": created_class_ids,
+            },
+        )
         db.session.commit()
 
         msg = f"导入成功！新增 {success_count} 人，更新 {updated_count} 人。"
@@ -1142,6 +1472,40 @@ def import_teachers_excel():
 
     # --- 阶段二：校验通过，执行写入 ---
     try:
+        before_assignments = {
+            "grade": [
+                {
+                    "teacher_id": r.teacher_id,
+                    "entry_year": r.entry_year,
+                    "academic_year": r.academic_year,
+                }
+                for r in GradeLeaderAssignment.query.filter_by(
+                    academic_year=academic_year
+                ).all()
+            ],
+            "subject": [
+                {
+                    "teacher_id": r.teacher_id,
+                    "subject_id": r.subject_id,
+                    "academic_year": r.academic_year,
+                }
+                for r in SubjectGroupLeaderAssignment.query.filter_by(
+                    academic_year=academic_year
+                ).all()
+            ],
+            "prep": [
+                {
+                    "teacher_id": r.teacher_id,
+                    "entry_year": r.entry_year,
+                    "subject_id": r.subject_id,
+                    "academic_year": r.academic_year,
+                }
+                for r in PrepGroupLeaderAssignment.query.filter_by(
+                    academic_year=academic_year
+                ).all()
+            ],
+        }
+
         # 1. 清理该学年的旧行政职务
         db.session.query(GradeLeaderAssignment).filter_by(
             academic_year=academic_year
@@ -1156,6 +1520,10 @@ def import_teachers_excel():
         added_count = 0
         updated_count = 0
         frozen_count = 0  # 统计冻结人数
+        before_users = {}
+        before_teachers = {}
+        created_usernames = []
+        created_teacher_user_ids = []
 
         # 2. 遍历并写入
         for index, row in df.iterrows():
@@ -1177,22 +1545,29 @@ def import_teachers_excel():
                 user.set_password("123456")
                 db.session.add(user)
                 db.session.flush()
+                created_usernames.append(username)
 
                 teacher = Teacher(user_id=user.id, name=name)
                 db.session.add(teacher)
                 db.session.flush()
+                created_teacher_user_ids.append(user.id)
                 added_count += 1
             else:
+                if username not in before_users:
+                    before_users[username] = _serialize_user(user)
                 teacher = user.teacher_profile
                 if teacher:
-                    teacher.name = name
+                    if user.id not in before_teachers:
+                        before_teachers[user.id] = _serialize_teacher(teacher)
                     updated_count += 1
                 else:
                     teacher = Teacher(user_id=user.id, name=name)
                     db.session.add(teacher)
                     db.session.flush()
+                    created_teacher_user_ids.append(user.id)
 
             # B. 更新基础信息与状态控制 (核心修改部分)
+            teacher.name = name
             teacher.gender = str(row.get("性别", teacher.gender))
             teacher.phone = str(row.get("电话", teacher.phone))
             teacher.job_title = str(row.get("职称", teacher.job_title))
@@ -1261,6 +1636,23 @@ def import_teachers_excel():
                             )
                         )
 
+        _create_import_batch(
+            import_type="teacher",
+            source_filename=file.filename,
+            scope={"academic_year": academic_year},
+            summary={
+                "added": added_count,
+                "updated": updated_count,
+                "frozen": frozen_count,
+            },
+            snapshot={
+                "before_assignments": before_assignments,
+                "before_users": list(before_users.values()),
+                "before_teachers": list(before_teachers.values()),
+                "created_usernames": created_usernames,
+                "created_teacher_user_ids": created_teacher_user_ids,
+            },
+        )
         db.session.commit()
         return jsonify(
             {
@@ -1526,6 +1918,26 @@ def import_course_assignments():
 
     # --- 阶段二：写入数据库 ---
     try:
+        before_course_assignments = [
+            {
+                "teacher_id": item.teacher_id,
+                "class_id": item.class_id,
+                "subject_id": item.subject_id,
+                "academic_year": item.academic_year,
+            }
+            for item in CourseAssignment.query.filter_by(academic_year=academic_year).all()
+        ]
+        before_head_teacher_assignments = [
+            {
+                "teacher_id": item.teacher_id,
+                "class_id": item.class_id,
+                "academic_year": item.academic_year,
+            }
+            for item in HeadTeacherAssignment.query.filter_by(
+                academic_year=academic_year
+            ).all()
+        ]
+
         # A. 清空该学年的旧数据
         db.session.query(CourseAssignment).filter_by(
             academic_year=academic_year
@@ -1592,6 +2004,16 @@ def import_course_assignments():
 
             count += 1
 
+        _create_import_batch(
+            import_type="course_assign",
+            source_filename=file.filename,
+            scope={"academic_year": academic_year},
+            summary={"updated_classes": count},
+            snapshot={
+                "before_course_assignments": before_course_assignments,
+                "before_head_teacher_assignments": before_head_teacher_assignments,
+            },
+        )
         db.session.commit()
         return jsonify(
             {
@@ -2378,9 +2800,6 @@ def import_admin_scores():
     entry_year = request.form.get("entry_year", type=int)
     exam_name = request.form.get("exam_name")
 
-    # 接收 JSON 字符串并解析
-    import json
-
     try:
         subject_ids = json.loads(request.form.get("subject_ids", "[]"))
         class_ids = json.loads(request.form.get("class_ids", "[]"))
@@ -2585,6 +3004,7 @@ def import_admin_scores():
                     "score": score_val,
                     "remark": remark_val,
                     "term": task.name,
+                    "class_id_snapshot": stu_obj.class_id,
                 }
             )
 
@@ -2615,6 +3035,8 @@ def import_admin_scores():
     try:
         updated_count = 0
         added_count = 0
+        before_scores = {}
+        created_score_keys = set()
 
         # 预加载现有成绩以减少查询: {(student_id, task_id): score_obj}
         # 涉及到的所有任务
@@ -2635,6 +3057,8 @@ def import_admin_scores():
                 # 更新
                 sc = existing_map[key]
                 if sc.score != item["score"] or sc.remark != item["remark"]:
+                    if key not in before_scores:
+                        before_scores[key] = _serialize_score(sc)
                     sc.score = item["score"]
                     sc.remark = item["remark"]
                     updated_count += 1
@@ -2647,10 +3071,35 @@ def import_admin_scores():
                     score=item["score"],
                     remark=item["remark"],
                     term=item["term"],
+                    class_id_snapshot=item.get("class_id_snapshot"),
                 )
                 db.session.add(new_sc)
+                created_score_keys.add(key)
                 added_count += 1
 
+        _create_import_batch(
+            import_type="score",
+            source_filename=file.filename,
+            scope={
+                "entry_year": entry_year,
+                "exam_name": exam_name,
+                "subject_ids": subject_ids,
+                "class_ids": class_ids,
+            },
+            summary={
+                "added": added_count,
+                "updated": updated_count,
+                "warning_count": len(logs["warnings"]),
+                "missing_student_count": len(missing),
+            },
+            snapshot={
+                "before_scores": list(before_scores.values()),
+                "created_scores": [
+                    {"student_id": sid, "exam_task_id": tid}
+                    for sid, tid in created_score_keys
+                ],
+            },
+        )
         db.session.commit()
 
         return jsonify(
@@ -2664,6 +3113,110 @@ def import_admin_scores():
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": f"数据库写入异常: {str(e)}"}), 500
+
+
+@admin_bp.route("/imports/history", methods=["GET"])
+def get_import_history():
+    page = request.args.get("page", default=1, type=int)
+    page_size = request.args.get("page_size", default=20, type=int)
+    import_type = request.args.get("import_type", default="", type=str).strip()
+
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+
+    query = ImportBatch.query
+    if import_type:
+        query = query.filter_by(import_type=import_type)
+
+    pagination = query.order_by(ImportBatch.create_time.desc(), ImportBatch.id.desc()).paginate(
+        page=page, per_page=page_size, error_out=False
+    )
+
+    items = []
+    for b in pagination.items:
+        scope = _json_loads(b.scope_json, {})
+        summary = _json_loads(b.summary_json, {})
+        items.append(
+            {
+                "id": b.id,
+                "import_type": b.import_type,
+                "import_type_label": IMPORT_TYPE_LABELS.get(b.import_type, b.import_type),
+                "source_filename": b.source_filename,
+                "scope": scope,
+                "summary": summary,
+                "can_rollback": bool(b.can_rollback),
+                "rolled_back_at": b.rolled_back_at.isoformat()
+                if b.rolled_back_at
+                else None,
+                "rollback_note": b.rollback_note,
+                "create_time": b.create_time.isoformat() if b.create_time else None,
+            }
+        )
+
+    return jsonify(
+        {
+            "items": items,
+            "total": pagination.total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )
+
+
+@admin_bp.route("/imports/<int:batch_id>/rollback", methods=["POST"])
+def rollback_import_batch(batch_id):
+    batch = ImportBatch.query.get(batch_id)
+    if not batch:
+        return jsonify({"msg": "导入记录不存在"}), 404
+
+    if not batch.can_rollback:
+        return jsonify({"msg": "该批次已回退，不能重复回退"}), 400
+
+    newer_batch = (
+        ImportBatch.query.filter(
+            ImportBatch.import_type == batch.import_type,
+            ImportBatch.id > batch.id,
+            ImportBatch.can_rollback.is_(True),
+        )
+        .order_by(ImportBatch.id.asc())
+        .first()
+    )
+    if newer_batch:
+        return (
+            jsonify(
+                {
+                    "msg": f"请先回退更新的同类批次（ID: {newer_batch.id}），再回退当前记录。"
+                }
+            ),
+            400,
+        )
+
+    snapshot = _json_loads(batch.snapshot_json, {})
+    scope = _json_loads(batch.scope_json, {})
+
+    try:
+        if batch.import_type == "student":
+            _rollback_students(snapshot)
+        elif batch.import_type == "teacher":
+            _rollback_teacher(snapshot, scope)
+        elif batch.import_type == "course_assign":
+            _rollback_course_assign(snapshot, scope)
+        elif batch.import_type == "score":
+            _rollback_score(snapshot)
+        else:
+            return jsonify({"msg": "不支持的导入类型，无法回退"}), 400
+
+        batch.can_rollback = False
+        batch.rolled_back_at = datetime.now()
+        batch.rollback_note = "手动回退完成"
+        db.session.commit()
+        return jsonify({"msg": f"回退成功：{IMPORT_TYPE_LABELS.get(batch.import_type, batch.import_type)}"})
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"msg": str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": f"回退失败: {str(e)}"}), 500
 
 
 @admin_bp.route("/system/settings", methods=["GET"])

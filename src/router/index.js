@@ -60,6 +60,10 @@ const routes = [
         component: () => import("../views/admin/SystemSettings.vue"),
       },
       {
+        path: "import-history",
+        component: () => import("../views/admin/ImportHistory.vue"),
+      },
+      {
         path: "score-entry",
         component: () => import("../views/admin/AdminScoreEntry.vue"),
       },

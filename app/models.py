@@ -240,3 +240,26 @@ class Score(db.Model):
     term = db.Column(db.String(20))  # 保留兼容
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class ImportBatch(db.Model):
+    __tablename__ = "import_batches"
+    id = db.Column(db.Integer, primary_key=True)
+
+    # 导入类型: student / teacher / course_assign / score
+    import_type = db.Column(db.String(32), nullable=False, index=True)
+    source_filename = db.Column(db.String(255), default="")
+
+    # JSON 字符串: 记录导入范围信息 (如学年/考试名等)
+    scope_json = db.Column(db.Text, nullable=False, default="{}")
+    # JSON 字符串: 记录新增/更新等摘要
+    summary_json = db.Column(db.Text, nullable=False, default="{}")
+    # JSON 字符串: 回退所需快照
+    snapshot_json = db.Column(db.Text, nullable=False)
+
+    # 回退状态
+    can_rollback = db.Column(db.Boolean, nullable=False, default=True)
+    rolled_back_at = db.Column(db.DateTime, nullable=True)
+    rollback_note = db.Column(db.String(255), default="")
+
+    create_time = db.Column(db.DateTime, default=datetime.now, nullable=False)
