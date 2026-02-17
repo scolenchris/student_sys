@@ -342,14 +342,13 @@ import {
   Download,
 } from "@element-plus/icons-vue";
 
-// --- State ---
 const loading = ref(false);
-const subjectOptions = ref([]); // 所有可选科目
-const allClassOptions = ref([]); // 所有班级列表
-const examNameOptions = ref([]); // 当前年级的考试名称列表
+const subjectOptions = ref([]);
+const allClassOptions = ref([]);
+const examNameOptions = ref([]);
 
 const tableData = ref([]);
-const dynamicColumns = ref([]); // 后端返回的科目名称列表，用于表头
+const dynamicColumns = ref([]);
 
 const query = reactive({
   entry_year: null,
@@ -365,52 +364,32 @@ const importResult = reactive({
   logs: {},
 });
 
-// --- Computed ---
-
-// 生成最近5年的年级选项
-const currentYear = new Date().getFullYear();
 const gradeOptions = computed(() => {
-  // 1. 如果还没有加载到班级数据，返回空
   if (!allClassOptions.value || allClassOptions.value.length === 0) {
     return [];
   }
 
-  // 2. 提取所有班级的 entry_year
   const years = allClassOptions.value.map((c) => c.entry_year);
-
-  // 3. 去重 (利用 Set)
   const uniqueYears = [...new Set(years)];
-
-  // 4. 排序 (降序，让最近的年份如 2025 排在前面)
   uniqueYears.sort((a, b) => b - a);
-
-  // 5. 映射为下拉框需要的格式
   return uniqueYears.map((y) => ({ year: y, label: `${y}级` }));
 });
 
-// 根据选中的年级，筛选出属于该年级的班级选项
 const filteredClassOptions = computed(() => {
   if (!query.entry_year) return [];
   return allClassOptions.value.filter((c) => c.entry_year === query.entry_year);
 });
 
-// --- Methods ---
-
-// 初始化加载基础数据
 const initData = async () => {
   try {
     const [sRes, cRes] = await Promise.all([getSubjects(), getClasses()]);
     subjectOptions.value = sRes.data;
     allClassOptions.value = cRes.data;
-
-    // 默认选中所有科目方便用户
-    // query.subject_ids = sRes.data.map(s => s.id);
   } catch (err) {
     ElMessage.error("初始化数据失败");
   }
 };
 
-// 年级改变时：1. 清空考试名和班级选择 2. 获取该年级的考试列表
 const handleYearChange = async (val) => {
   query.exam_name = "";
   query.class_ids = [];
@@ -427,11 +406,8 @@ const handleYearChange = async (val) => {
   }
 };
 
-// 执行查询
 const handleSearch = async () => {
-  // 简单校验
   if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
-    // 还没选完时不强制报错，只是不查
     return;
   }
 
@@ -445,7 +421,7 @@ const handleSearch = async () => {
     });
 
     tableData.value = res.data.data;
-    dynamicColumns.value = res.data.subjects; // 确保表头顺序和后端一致
+    dynamicColumns.value = res.data.subjects;
 
     if (tableData.value.length === 0) {
       ElMessage.info("未查询到相关成绩数据");
@@ -457,11 +433,9 @@ const handleSearch = async () => {
   }
 };
 
-// 导出 CSV
 const exportCSV = () => {
   if (tableData.value.length === 0) return;
 
-  // 更新表头
   const headers = [
     "级排名(总分并列)",
     "级排名(规则严格)",
@@ -511,7 +485,6 @@ const exportCSV = () => {
 };
 
 const handleTemplateDownload = async (type) => {
-  // 校验
   if (!query.entry_year) return ElMessage.warning("请选择年级");
   if (query.subject_ids.length === 0)
     return ElMessage.warning("请至少选择一个科目");
@@ -523,7 +496,7 @@ const handleTemplateDownload = async (type) => {
   try {
     const res = await getScoreTemplate({
       entry_year: query.entry_year,
-      class_ids: query.class_ids, // 支持按班级筛选导出
+      class_ids: query.class_ids,
       subject_ids: query.subject_ids,
       exam_name: type === "backup" ? query.exam_name : null,
     });
@@ -541,16 +514,14 @@ const handleTemplateDownload = async (type) => {
   }
 };
 
-// 2. 严谨导入
 const handleStrictImport = async (param) => {
-  // 前置校验
+  // 导入前必须先明确目标范围，避免误写入。
   if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
     return ElMessage.warning(
       "请务必先在上方筛选栏选择：年级、考试名称、以及本次要导入的科目！",
     );
   }
 
-  // 二次确认
   try {
     await ElMessageBox.confirm(
       `即将向【${query.entry_year}级 - ${query.exam_name}】导入 ${query.subject_ids.length} 个科目的成绩。\n请确保Excel表头与系统科目名称严格一致。`,
@@ -569,8 +540,8 @@ const handleStrictImport = async (param) => {
   formData.append("file", param.file);
   formData.append("entry_year", query.entry_year);
   formData.append("exam_name", query.exam_name);
-  formData.append("subject_ids", JSON.stringify(query.subject_ids)); // 传数组
-  formData.append("class_ids", JSON.stringify(query.class_ids)); // 传数组
+  formData.append("subject_ids", JSON.stringify(query.subject_ids));
+  formData.append("class_ids", JSON.stringify(query.class_ids));
 
   const loadingInst = ElMessage.success({
     message: "正在进行原子性校验与导入...",
@@ -581,25 +552,20 @@ const handleStrictImport = async (param) => {
     const res = await importAdminScores(formData);
     loadingInst.close();
 
-    // 无论是 success 还是 error (如果是后端处理过的业务error)，都弹窗显示详情
-    // 注意：axios 拦截器可能会拦截非 200 响应。
-    // 如果后端返回 200 但 status='error' (业务逻辑拒绝)，走这里：
+    // 后端可能返回 200 + status=error（业务拒绝），统一弹窗展示详情。
     if (res.data.status === "error") {
       importResult.status = "error";
       importResult.msg = res.data.msg;
     } else {
       importResult.status = "success";
       importResult.msg = res.data.msg;
-      // 导入成功后刷新列表
       handleSearch();
     }
     importResult.logs = res.data.logs;
     importResult.visible = true;
   } catch (err) {
     loadingInst.close();
-    // 如果是 400 等 HTTP 错误，通常在这里捕获
     if (err.response && err.response.data && err.response.data.logs) {
-      // 这是我们在后端返回的带 logs 的 400/200 响应
       importResult.status = "error";
       importResult.msg = err.response.data.msg;
       importResult.logs = err.response.data.logs;

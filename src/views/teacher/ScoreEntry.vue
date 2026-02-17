@@ -177,11 +177,9 @@ const students = ref([]);
 const loading = ref(false);
 const saving = ref(false);
 
-// --- 导入导出相关状态 ---
 const resultDialogVisible = ref(false);
 const importSummary = ref({ msg: "", errors: [] });
 
-// 快捷键引用
 const scoreInputRefs = ref({});
 
 const currentExamInfo = computed(() => {
@@ -237,7 +235,7 @@ const handleCourseChange = async (assignmentId) => {
 const handleExamChange = async (examId) => {
   if (!selectedCourseInfo.value) return;
   loading.value = true;
-  scoreInputRefs.value = {}; // 重置引用
+  scoreInputRefs.value = {};
   try {
     const res = await getScoreList({
       class_id: selectedCourseInfo.value.class_id,
@@ -274,7 +272,6 @@ const saveAllScores = async () => {
   }
 };
 
-// --- 导出逻辑 ---
 const handleExport = async () => {
   if (!selectedCourseInfo.value || !selectedExamId.value) return;
   try {
@@ -283,12 +280,10 @@ const handleExport = async () => {
       exam_task_id: selectedExamId.value,
     });
 
-    // 创建下载链接
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const link = document.createElement("a");
     link.href = url;
 
-    // 生成友好的文件名
     const clsName = selectedCourseInfo.value.grade_class;
     const subName = selectedCourseInfo.value.subject_name;
     const examName = currentExamInfo.value?.name || "考试";
@@ -302,7 +297,6 @@ const handleExport = async () => {
   }
 };
 
-// --- 导入逻辑 ---
 const handleImport = async (param) => {
   const formData = new FormData();
   formData.append("file", param.file);
@@ -318,14 +312,12 @@ const handleImport = async (param) => {
     const res = await importScores(formData);
     loadingInstance.close();
 
-    // 赋值给弹窗数据
-    importSummary.value = res.data.logs; // logs 包含 success, updated, errors[]
+    importSummary.value = res.data.logs;
     importSummary.value.msg = res.data.msg;
 
-    // 显示结果弹窗
     resultDialogVisible.value = true;
 
-    // 导入后自动刷新表格，看到最新成绩
+    // 导入后刷新名单，展示最新结果。
     handleExamChange(selectedExamId.value);
   } catch (err) {
     loadingInstance.close();
@@ -334,46 +326,33 @@ const handleImport = async (param) => {
 };
 
 const validateInput = (row, index) => {
-  // 1. 空值预处理
   if (row.score === null || row.score === undefined) return;
 
-  // 转为字符串并去除首尾空格
   const strVal = String(row.score).trim();
 
-  // 如果是空字符串，重置为 null（视为未录入）并不报错
   if (strVal === "") {
     row.score = null;
     return;
   }
 
-  // 2. 检查特殊标识 "缺考"
   if (strVal === "缺考") {
     return;
   }
 
-  // 3. 严格数字校验
-  // 【关键修改】：使用 Number() 替代 parseFloat()
-  // parseFloat("40a12") -> 40 (宽松，不符合要求)
-  // Number("40a12") -> NaN (严格，符合要求)
+  // 严格数字校验：禁止 "40a12"、"1e5" 等非标准输入。
   const numVal = Number(strVal);
-
-  // 额外正则校验：防止科学计数法 (如 1e2) 或其他边缘情况，只允许标准数字格式
-  // 允许：40, 40.5, .5, 40.
-  // 不允许：40a12, 12-3, 1e5
   const isStandardNumber = /^-?(\d+\.?\d*|\.\d+)$/.test(strVal);
 
   const maxScore = currentExamInfo.value?.full_score || 100;
 
-  // 综合校验：必须是有效数字 且 符合正则格式
   if (isNaN(numVal) || !isStandardNumber) {
     ElMessage.warning(
       `第 ${index + 1} 行：输入内容 "${strVal}" 不合法，请输入纯数字或"缺考"`,
     );
-    row.score = null; // 清空非法输入
+    row.score = null;
     return;
   }
 
-  // 4. 数值范围校验
   if (numVal < 0 || numVal > maxScore) {
     ElMessage.warning(
       `第 ${index + 1} 行：分数 ${numVal} 超出范围 (0-${maxScore})`,
@@ -382,8 +361,7 @@ const validateInput = (row, index) => {
     return;
   }
 
-  // 5. (可选) 自动格式化
-  // 将 "090" 修正为 90，将 "40." 修正为 40
+  // 归一化数值格式，例如 "090" -> 90。
   row.score = numVal;
 };
 

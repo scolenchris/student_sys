@@ -174,7 +174,7 @@ const tableData = ref([]);
 const allClasses = ref([]);
 const examNameOptions = ref([]);
 
-// 默认当前年份
+// 学年按 8 月切换：8 月前视为上一学年，8 月及以后视为当前年。
 const now = new Date();
 const currentYear =
   now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
@@ -187,14 +187,12 @@ const query = reactive({
   threshold_pass: 60,
 });
 
-// 学年选项 (前后3年)
 const academicYearOptions = computed(() => {
   const years = [];
   for (let i = -2; i < 3; i++) years.push(currentYear + i);
   return years.sort((a, b) => b - a);
 });
 
-// 年级选项
 const gradeOptions = computed(() => {
   if (!allClasses.value.length) return [];
   const years = [...new Set(allClasses.value.map((c) => c.entry_year))];
@@ -235,7 +233,6 @@ const fetchData = async () => {
   }
 };
 
-// 高亮总计行
 const tableRowClassName = ({ row }) => {
   if (row.name.includes("总计")) {
     return "total-row";
@@ -243,7 +240,6 @@ const tableRowClassName = ({ row }) => {
   return "";
 };
 
-// 简单的导出 CSV 功能
 const exportToExcel = () => {
   if (!tableData.value.length) return;
 
@@ -258,7 +254,7 @@ const exportToExcel = () => {
       item.subject,
       item.exam_name,
       item.full_score,
-      `"${item.classes}"`, // 防止班级里的逗号干扰 CSV
+      `"${item.classes}"`,
       item.total_people,
       item.exam_people,
       item.avg_score,
@@ -314,7 +310,7 @@ onMounted(init);
   margin-right: 10px;
 }
 :deep(.total-row) {
-  background-color: #f0f9eb !important; /* 浅绿色背景高亮总计行 */
+  background-color: #f0f9eb !important;
   font-weight: bold;
 }
 </style>

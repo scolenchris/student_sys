@@ -11,13 +11,13 @@ const routes = [
     path: "/change-password",
     name: "ChangePassword",
     component: ChangePassword,
-    meta: { requiresAuth: true }, // 标记需要登录
+    meta: { requiresAuth: true },
   },
   {
     path: "/admin",
     component: AdminDashboard,
     redirect: "/admin/approval",
-    meta: { requiresAuth: true, role: "admin" }, // 标记需要管理员权限
+    meta: { requiresAuth: true, role: "admin" },
     children: [
       {
         path: "approval",
@@ -52,7 +52,7 @@ const routes = [
         component: () => import("../views/admin/ExamPublish.vue"),
       },
       {
-        path: "class-stats", // 访问路径: /admin/class-stats
+        path: "class-stats",
         component: () => import("../views/admin/ClassScoreStats.vue"),
       },
       {
@@ -77,7 +77,7 @@ const routes = [
     path: "/teacher",
     component: TeacherDashboard,
     redirect: "/teacher/scores",
-    meta: { requiresAuth: true, role: "teacher" }, // 标记需要老师权限
+    meta: { requiresAuth: true, role: "teacher" },
     children: [
       {
         path: "scores",
@@ -85,7 +85,6 @@ const routes = [
       },
     ],
   },
-  // 捕获所有未定义路由，重定向到登录
   {
     path: "/:pathMatch(.*)*",
     redirect: "/",
@@ -97,18 +96,14 @@ export const router = createRouter({
   routes,
 });
 
-// --- 核心修复：全局路由守卫 ---
+// 全局守卫：登录态校验、强制改密与角色权限控制。
 router.beforeEach((to, from, next) => {
-  // 获取本地存储的用户信息
   const role = localStorage.getItem("user_role");
-  const isAuthenticated = !!role; // 是否已登录
-  // [修改点 3] 获取强制修改密码标记
+  const isAuthenticated = !!role;
   const mustChangePwd = localStorage.getItem("must_change_password") === "true";
 
-  // 1. 如果要去的是 登录页
   if (to.path === "/") {
     if (isAuthenticated) {
-      // [修改点 4] 登录页也需要判断是否需要改密码
       if (mustChangePwd) return next("/change-password");
 
       if (role === "admin") return next("/admin/approval");
@@ -117,7 +112,6 @@ router.beforeEach((to, from, next) => {
     return next();
   }
 
-  // 2. 检查该路由是否需要登录
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
 
   if (requiresAuth && !isAuthenticated) {
@@ -125,7 +119,7 @@ router.beforeEach((to, from, next) => {
     return next("/");
   }
 
-  // [修改点 5] 强制拦截：如果需要改密码，且当前不在改密码页，强制跳转
+  // 强制修改密码期间仅允许访问改密页。
   if (isAuthenticated && mustChangePwd) {
     if (to.path !== "/change-password") {
       ElMessage.warning("为了账号安全，请先修改初始密码");
@@ -133,7 +127,6 @@ router.beforeEach((to, from, next) => {
     }
   }
 
-  // 3. 权限检查
   const requiredRole = to.matched.find((record) => record.meta.role)?.meta.role;
 
   if (requiredRole && requiredRole !== role) {
@@ -141,6 +134,5 @@ router.beforeEach((to, from, next) => {
     return next("/");
   }
 
-  // 4. 一切正常，放行
   next();
 });

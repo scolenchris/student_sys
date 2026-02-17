@@ -66,13 +66,13 @@
 <script setup>
 import { ref, reactive, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { loginApi, registerApi, getRegisterConfig } from "../api/auth"; // 引入新API
+import { loginApi, registerApi, getRegisterConfig } from "../api/auth";
 import { ElMessage } from "element-plus";
 
 const router = useRouter();
 const isRegister = ref(false);
 const loading = ref(false);
-const allowRegister = ref(true); // 默认为 true，防止接口慢时闪烁
+const allowRegister = ref(true);
 
 const form = reactive({
   username: "",
@@ -81,7 +81,7 @@ const form = reactive({
   role: "teacher",
 });
 
-// 初始化检查注册开关
+// 初始化注册开关状态。请求失败时默认保持可注册，避免页面闪烁。
 onMounted(async () => {
   try {
     const res = await getRegisterConfig();
@@ -109,12 +109,11 @@ const handleSubmit = async () => {
         password: form.password,
       });
 
-      // 1. 存储用户信息
       localStorage.setItem("user_id", res.data.user_id);
       localStorage.setItem("user_role", res.data.role);
       localStorage.setItem("username", res.data.username);
 
-      // [修改点 1]：存储强制修改密码标记
+      // 记录强制改密标记，路由守卫会据此拦截跳转。
       if (res.data.must_change_password) {
         localStorage.setItem("must_change_password", "true");
       } else {
@@ -123,13 +122,10 @@ const handleSubmit = async () => {
 
       ElMessage.success("登录成功");
 
-      // [修改点 2]：根据标记决定跳转方向
       setTimeout(() => {
         if (res.data.must_change_password) {
-          // 强制跳转修改密码
           router.push("/change-password");
         } else {
-          // 正常跳转
           if (res.data.role === "admin") router.push("/admin/approval");
           else router.push("/teacher/scores");
         }

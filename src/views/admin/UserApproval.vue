@@ -85,7 +85,7 @@
 import { ref, onMounted } from "vue";
 import { getPendingUsers, approveUser, rejectUser } from "../../api/admin";
 import { ElMessage } from "element-plus";
-import { User } from "@element-plus/icons-vue"; // 确保你引入了图标
+import { User } from "@element-plus/icons-vue";
 
 const pendingUsers = ref([]);
 
@@ -102,7 +102,7 @@ const handleApprove = async (id) => {
   try {
     await approveUser(id);
     ElMessage.success("操作成功");
-    fetchData(); // 刷新列表
+    fetchData();
   } catch (err) {
     ElMessage.error(err.response?.data?.msg || "操作失败");
   }

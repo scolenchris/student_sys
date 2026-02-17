@@ -287,7 +287,7 @@ const handleSearch = async () => {
   }
 };
 
-// --- 核心新增：合计行计算逻辑 ---
+// 表格合计行：人数字段求和，率字段按全级口径重算。
 const getSummaries = (param) => {
   const { columns, data } = param;
   const sums = [];
@@ -333,7 +333,7 @@ const getSummaries = (param) => {
       return;
     }
 
-    // --- 修改点：计算最高分时，过滤掉无人考试的班级 ---
+    // 最高分/最低分只统计有考试人数的班级，避免空班级干扰。
     if (prop === "max_score") {
       const validData = data.filter((item) => item.exam_people > 0);
       if (validData.length > 0) {
@@ -345,7 +345,6 @@ const getSummaries = (param) => {
       return;
     }
 
-    // --- 修改点：计算最低分时，过滤掉无人考试的班级，避免“缺考的0分”干扰 ---
     if (prop === "min_score") {
       const validData = data.filter((item) => item.exam_people > 0);
       if (validData.length > 0) {
@@ -370,7 +369,6 @@ const getSummaries = (param) => {
       return;
     }
 
-    // 各种率的重算逻辑保持不变
     if (prop === "excellent_rate") {
       const totalCount = data.reduce(
         (prev, curr) => prev + (curr.excellent_count || 0),

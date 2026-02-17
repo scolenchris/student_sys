@@ -23,7 +23,7 @@ from app.models import (
 )
 from sqlalchemy import func
 from datetime import datetime
-import re  # 引入正则模块用于校验
+import re
 import io
 from docxtpl import DocxTemplate
 
@@ -361,25 +361,20 @@ def _rollback_score(snapshot):
         row.term = item.get("term")
         row.class_id_snapshot = item.get("class_id_snapshot")
 
-# --- 1. 用户审核模块 ---
-
-
-# 获取所有待审核用户
+# 用户审核：获取待审核账号列表。
 @admin_bp.route("/pending_users", methods=["GET"])
 def get_pending_users():
     users = User.query.filter_by(is_approved=False).all()
     results = []
 
     for user in users:
-        # 1. 确定姓名
-        # 新注册用户还没档案，取 real_name；老用户取档案里的 name
+        # 新注册用户尚未建教师档案时，姓名来自 User.real_name。
         if user.teacher_profile:
             name = user.teacher_profile.name
-            # 核心修正：如果是老用户，状态直接取档案里的状态 (如 '退休', '离职')
+            # 已有档案的用户展示档案状态（如在职/退休/离职）。
             current_status = user.teacher_profile.status
         else:
             name = user.real_name if user.real_name else "未填"
-            # 核心修正：没有档案的才是 '新注册'
             current_status = "新注册"
 
         results.append(
@@ -388,23 +383,22 @@ def get_pending_users():
                 "username": user.username,
                 "role": user.role,
                 "name": name,
-                "current_status": current_status,  # 返回真实状态
+                "current_status": current_status,
             }
         )
 
     return jsonify(results)
 
 
-# 审核通过
+# 审核通过。
 @admin_bp.route("/approve_user/<int:user_id>", methods=["POST"])
 def approve_user(user_id):
     user = User.query.get(user_id)
     if not user:
         return jsonify({"msg": "用户不存在"}), 404
 
-    # 核心逻辑：如果是老师，且还没有档案，则创建
+    # 教师账号在首次审核通过时自动建档。
     if user.role == "teacher" and not user.teacher_profile:
-        # 使用 User 表里存的真实姓名，如果没有则用用户名兜底
         t_name = user.real_name if user.real_name else user.username
         new_teacher = Teacher(user_id=user.id, name=t_name, status="在职")
         db.session.add(new_teacher)
@@ -415,7 +409,7 @@ def approve_user(user_id):
     return jsonify({"msg": "审核已通过，教师档案已建立"})
 
 
-# 拒绝申请（直接删除记录）
+# 拒绝申请（直接删除账号与关联教师档案）。
 @admin_bp.route("/reject_user/<int:user_id>", methods=["DELETE"])
 def reject_user(user_id):
     user = User.query.get(user_id)
@@ -427,18 +421,16 @@ def reject_user(user_id):
     return jsonify({"msg": "申请已拒绝"})
 
 
-# --- 2. 教师管理模块 ---
+# 教师管理：按学年返回教师信息与职务聚合结果。
 @admin_bp.route("/teachers", methods=["GET"])
 def get_teachers():
-    # 1. 获取筛选参数
     current_year = datetime.now().year
-    # 默认查看当前学年 (如 2025年2月 -> 2024学年)
+    # 学年按 9 月切换：例如 2026-02 对应 2025 学年。
     default_year = current_year if datetime.now().month >= 9 else current_year - 1
 
     academic_year = request.args.get("academic_year", default_year, type=int)
-    status_filter = request.args.get("status", "在职")  # 默认只看在职
+    status_filter = request.args.get("status", "在职")
 
-    # 2. 查询教师基础信息
     query = db.session.query(Teacher, User).join(User, Teacher.user_id == User.id)
 
     if status_filter != "全部":
@@ -448,9 +440,7 @@ def get_teachers():
 
     result = []
     for t, u in teachers:
-        # --- 核心修改：只聚合指定学年的职务信息 ---
-
-        # 1. 班主任 (带年份过滤)
+        # 仅统计指定学年的任职与任课信息。
         ht_list = [
             h.class_info.full_name
             for h in t.head_teacher_assigns
@@ -458,7 +448,6 @@ def get_teachers():
         ]
         ht_str = "、".join(ht_list) if ht_list else "否"
 
-        # 2. 级长 (带年份过滤)
         gl_list = [
             g.grade_name
             for g in t.grade_leader_assigns
@@ -466,7 +455,6 @@ def get_teachers():
         ]
         gl_str = "、".join(gl_list) if gl_list else "否"
 
-        # 3. 科组长 (带年份过滤)
         sgl_list = [
             s.subject.name
             for s in t.subject_group_assigns
@@ -474,7 +462,6 @@ def get_teachers():
         ]
         sgl_str = "、".join(sgl_list) if sgl_list else "否"
 
-        # 4. 备课组长 (带年份过滤)
         pgl_list = [
             f"{p.grade_name}{p.subject.name}"
             for p in t.prep_group_assigns
@@ -482,8 +469,6 @@ def get_teachers():
         ]
         pgl_str = "、".join(pgl_list) if pgl_list else "否"
 
-        # 5. 任教信息 (带年份过滤)
-        # 注意：这里展示的是该老师在该学年的教学任务
         my_courses = [
             c for c in t.course_assignments if c.academic_year == academic_year
         ]
@@ -498,7 +483,6 @@ def get_teachers():
             list(set([c.subject.name for c in my_courses if c.subject]))
         )
 
-        # 构造职务显示字符串
         duty_parts = []
         if ht_list:
             duty_parts.append("班主任")
@@ -518,18 +502,16 @@ def get_teachers():
                 "name": t.name,
                 "gender": t.gender,
                 "ethnicity": t.ethnicity,
-                "status": t.status,  # 这里的状态是当前的最新状态
-                "job_duty_display": "、".join(duty_parts),  # 职务是指定学年的
+                "status": t.status,
+                "job_duty_display": "、".join(duty_parts),
                 "job_title": t.job_title,
                 "education": t.education,
                 "major": t.major,
                 "phone": t.phone,
-                # 详细描述
                 "head_teacher_desc": ht_str,
                 "grade_leader_desc": gl_str,
                 "subject_group_desc": sgl_str,
                 "prep_group_desc": pgl_str,
-                # 教学情况
                 "teaching_grades": (
                     "、".join(teaching_grades) if teaching_grades else "-"
                 ),
@@ -758,7 +740,7 @@ def get_students():
                 "household_registration": s.household_registration,
                 "city_school_id": s.city_school_id,
                 "national_school_id": s.national_school_id,
-                "id_card_number": s.id_card_number,  # 新增返回
+                "id_card_number": s.id_card_number,
                 "remarks": s.remarks,
             }
         )
@@ -793,7 +775,7 @@ def add_student():
         household_registration=data.get("household_registration"),
         city_school_id=city_sid,
         national_school_id=data.get("national_school_id"),
-        id_card_number=id_card,  # 新增保存
+        id_card_number=id_card,
         remarks=data.get("remarks"),
     )
     db.session.add(student)
@@ -830,7 +812,7 @@ def update_student(s_id):
     student.national_school_id = data.get(
         "national_school_id", student.national_school_id
     )
-    student.id_card_number = new_id_card  # 新增更新
+    student.id_card_number = new_id_card
     student.remarks = data.get("remarks", student.remarks)
 
     db.session.commit()
@@ -864,7 +846,7 @@ def get_class_report():
         for sc in scores:
             sub_name = subject_map.get(sc.subject_id)
             if sub_name:
-                # 核心修改：如果是缺考，返回字符串
+                # 缺考用字符串回传，便于前端直接展示。
                 if sc.remark == "缺考":
                     score_detail[sub_name] = "缺考"
                     # 缺考算0分计入总分
@@ -904,7 +886,7 @@ def get_class_report():
         {
             "subjects": [s.name for s in subjects],
             "report": report_data,
-            "subject_averages": class_subject_averages,  # 新增：返回各科全班均分
+            "subject_averages": class_subject_averages,
         }
     )
 
@@ -928,7 +910,7 @@ def get_grade_exam_names():
     return jsonify([n[0] for n in names])
 
 
-# 新增：综合成绩报表接口
+# 综合成绩报表接口。
 @admin_bp.route("/stats/comprehensive_report", methods=["POST"])
 def get_comprehensive_report():
     data = request.get_json()
@@ -1002,7 +984,7 @@ def get_comprehensive_report():
             subj_id = task_map.get(sc.exam_task_id)
             subj_name = subject_name_map.get(subj_id)
             if subj_name:
-                # 核心修改：存储用于展示的值
+                # 缺考保持字符串，其余存数值，保证展示与统计兼容。
                 if sc.remark == "缺考":
                     stats_data[sid]["score_map"][subj_name] = "缺考"
                     # total 依然加 0
@@ -1654,7 +1636,7 @@ def get_assignments():
         .join(Subject, CourseAssignment.subject_id == Subject.id)
     )
 
-    # 3. [关键] 如果有学年参数，增加筛选条件
+    # 允许按学年筛选任课分配。
     if academic_year:
         query = query.filter(CourseAssignment.academic_year == academic_year)
 
@@ -2152,7 +2134,7 @@ def import_teachers_excel():
                     db.session.flush()
                     created_teacher_user_ids.append(user.id)
 
-            # B. 更新基础信息与状态控制 (核心修改部分)
+            # B. 更新基础信息，并根据状态同步账号可用性。
             teacher.name = name
             teacher.gender = str(row.get("性别", teacher.gender))
             teacher.phone = str(row.get("电话", teacher.phone))
@@ -2256,7 +2238,7 @@ def get_exam_tasks():
     # 支持筛选
     entry_year = request.args.get("entry_year", type=int)
     subject_id = request.args.get("subject_id", type=int)
-    # [新增] 支持按学年筛选
+    # 支持按学年筛选。
     academic_year = request.args.get("academic_year", type=int)
 
     query = ExamTask.query
@@ -2280,7 +2262,7 @@ def get_exam_tasks():
                 "subject_name": t.subject.name if t.subject else "-",
                 "full_score": t.full_score,
                 "is_active": t.is_active,
-                "academic_year": t.academic_year,  # [新增] 返回学年信息
+                "academic_year": t.academic_year,
             }
             for t in tasks
         ]
@@ -2309,7 +2291,7 @@ def add_exam_task():
         name=data["name"],
         entry_year=data["entry_year"],
         subject_id=data["subject_id"],
-        academic_year=academic_year,  # [新增] 保存学年
+        academic_year=academic_year,
         full_score=data.get("full_score", 100),
         is_active=data.get("is_active", True),
     )
@@ -2343,8 +2325,7 @@ def delete_exam_task(id):
         return jsonify({"msg": "任务不存在"}), 404
 
     try:
-        # 1. 关键步骤：先删除该任务下所有已登记的成绩
-        # 这样避免了外键约束冲突，同时也清理了旧数据
+        # 先删除该任务下历史成绩，避免残留旧数据。
         Score.query.filter_by(exam_task_id=id).delete()
 
         # 2. 成绩清理完毕后，再删除任务本身
@@ -2362,7 +2343,7 @@ def delete_exam_task(id):
 # [在 app/routes/admin.py 中添加]
 
 
-# --- 8. 批量导入任课信息 (新增功能) ---
+# 批量导入任课信息。
 # [app/routes/admin.py]
 
 
@@ -2726,7 +2707,7 @@ def export_teachers():
         user = User.query.get(t.user_id)
         username = user.username if user else ""
 
-        # --- 核心修改：只导出 target_year 的职务 ---
+        # 只导出 target_year 对应的职务信息。
 
         # A. 班主任
         ht_list = [
@@ -3519,7 +3500,7 @@ def import_admin_scores():
 
         target_cid = class_name_map[cname]
 
-        # B. 身份三维匹配 (核心阻断逻辑)
+        # B. 学号/姓名/班级三维匹配，不通过则阻断导入。
         if sid not in student_map:
             logs["fatal_errors"].append(
                 f"行{row_num}: 学号【{sid}】在系统中不存在 (或非在读/非选中班级)。"
@@ -3552,7 +3533,7 @@ def import_admin_scores():
             # 处理空值和格式
             # if raw_val == "" or raw_val is None:
             #     continue  # 空值不录入，保留原样 (或者需求是覆盖为空?) 这里假设是不处理
-            # [新增修改] 严格空值校验
+            # 严格空值校验：空成绩按致命错误处理。
             if pd.isna(raw_val) or str(raw_val).strip() == "":
                 logs["fatal_errors"].append(
                     f"行{row_num}: 学生【{name}】缺失【{sub_name}】科目的成绩。"
@@ -3654,7 +3635,7 @@ def import_admin_scores():
                     sc.remark = new_remark
                     updated_count += 1
             else:
-                # 新增
+                # 新建成绩记录
                 new_sc = Score(
                     student_id=item["student_id"],
                     subject_id=item["subject_id"],
@@ -3837,7 +3818,7 @@ def update_system_settings():
     return jsonify({"msg": "系统设置已更新"})
 
 
-# --- 10. 管理员成绩录入 (新增) ---
+# 管理员成绩录入。
 
 
 # A. 获取某班级所有可录入的考试 (跨科目)

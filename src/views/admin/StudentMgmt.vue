@@ -232,7 +232,6 @@ import {
 import { ElMessage } from "element-plus";
 import { Document, Upload, Download } from "@element-plus/icons-vue";
 
-// ... (保留 formatClassName, getStatusType 等辅助函数)
 const formatClassName = (c) =>
   `${String(c.entry_year).slice(-2)}级(${String(c.class_num).padStart(
     2,
@@ -261,7 +260,7 @@ const form = reactive({
   household_registration: "本市",
   city_school_id: "",
   national_school_id: "",
-  id_card_number: "", // 绑定新字段
+  id_card_number: "",
   remarks: "",
 });
 
@@ -288,17 +287,15 @@ const openDialog = (type, row = null) => {
 };
 
 const validateForm = () => {
-  // 1. 必填校验
   if (!form.student_id || !form.name || !form.class_id) {
     ElMessage.warning("请填写必填项(学号、姓名、班级)");
     return false;
   }
-  // 2. 市学籍号纯数字校验
   if (form.city_school_id && !/^\d+$/.test(form.city_school_id)) {
     ElMessage.warning("市学籍号必须为纯数字");
     return false;
   }
-  // 3. 身份证号简单长度校验 (更复杂的校验可交由后端或用专门正则)
+  // 身份证号做基础长度校验，完整校验交给后端。
   if (form.id_card_number && form.id_card_number.length !== 18) {
     ElMessage.warning("身份证号应为18位");
     return false;
@@ -356,7 +353,6 @@ onMounted(() => {
   fetchStudents();
 });
 
-// 处理上传逻辑
 const handleUpload = async (param) => {
   const formData = new FormData();
   formData.append("file", param.file);
@@ -374,7 +370,7 @@ const handleUpload = async (param) => {
       `导入成功！新增: ${res.data.added} 人，更新: ${res.data.updated} 人`,
     );
 
-    // 导入后自动刷新班级列表(因为可能新增了班级)和学生列表
+    // 导入后同步刷新班级与学生列表。
     fetchClasses();
     fetchStudents();
   } catch (err) {
@@ -408,20 +404,16 @@ const handlePrintCert = async (row) => {
   }
 };
 
-// 处理导出逻辑
 const handleExport = async () => {
   try {
-    // 传入当前筛选的班级ID，如果没选则是全部
     const res = await exportStudents({ class_id: filterClassId.value });
 
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const link = document.createElement("a");
     link.href = url;
 
-    // 简单的文件名处理
     let fname = "学生名单_备份.xlsx";
     if (filterClassId.value) {
-      // 尝试从 classes 列表中找到班级名
       const cls = classes.value.find((c) => c.id === filterClassId.value);
       if (cls) fname = `${formatClassName(cls)}_学生名单.xlsx`;
     }
@@ -441,7 +433,6 @@ const handleDelete = async (row) => {
   try {
     await deleteStudent(row.id);
     ElMessage.success("删除成功");
-    // 重新加载列表
     fetchStudents();
   } catch (err) {
     console.error(err);

@@ -162,7 +162,7 @@ import * as adminApi from "../../api/admin";
 import { ElMessage } from "element-plus";
 import { Upload, Plus, Download } from "@element-plus/icons-vue";
 
-// --- 1. 学年逻辑 ---
+// 学年按 9 月切换。
 const now = new Date();
 const defaultYear =
   now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
@@ -181,9 +181,8 @@ const subjects = ref([]);
 const visible = ref(false);
 const loading = ref(false);
 
-// 导入错误处理相关
 const errorDialogVisible = ref(false);
-const importErrors = ref([]); // 存储错误列表字符串
+const importErrors = ref([]);
 const importErrorMsg = ref("");
 
 const form = reactive({ teacher_id: "", class_id: "", subject_id: "" });
@@ -191,7 +190,6 @@ const form = reactive({ teacher_id: "", class_id: "", subject_id: "" });
 const fetchData = async () => {
   loading.value = true;
   try {
-    // 传入 academic_year 参数进行筛选
     const res = await adminApi.getAssignments({
       academic_year: currentAcademicYear.value,
     });
@@ -202,7 +200,6 @@ const fetchData = async () => {
 };
 
 const openDialog = async () => {
-  // 加载下拉框所需的数据
   const [tRes, cRes, sRes] = await Promise.all([
     adminApi.getTeachers(),
     adminApi.getClasses(),
@@ -216,7 +213,6 @@ const openDialog = async () => {
 
 const submit = async () => {
   try {
-    // 提交时带上当前选中的学年
     const postData = {
       ...form,
       academic_year: currentAcademicYear.value,
@@ -241,11 +237,9 @@ const handleDelete = async (id) => {
   }
 };
 
-// 新增：处理 Excel 导入
 const handleImport = async (param) => {
   const formData = new FormData();
   formData.append("file", param.file);
-  // [关键] 附加学年
   formData.append("academic_year", currentAcademicYear.value);
 
   const loadingInstance = ElMessage.success({
@@ -254,19 +248,18 @@ const handleImport = async (param) => {
   });
 
   try {
-    // 调用我们在 api/admin.js 中新增的接口
     const res = await adminApi.importCourseAssignmentsExcel(formData);
     loadingInstance.close();
     ElMessage.success(res.data.msg || "导入成功");
-    fetchData(); // 刷新列表
+    fetchData();
   } catch (err) {
     loadingInstance.close();
 
-    // 如果是后端返回的业务逻辑校验错误 (400)
+    // 业务校验错误由后端返回详细错误列表。
     if (err.response && err.response.data && err.response.data.errors) {
       importErrorMsg.value = err.response.data.msg || "导入数据存在问题";
-      importErrors.value = err.response.data.errors; // 这是一个字符串数组
-      errorDialogVisible.value = true; // 打开错误弹窗
+      importErrors.value = err.response.data.errors;
+      errorDialogVisible.value = true;
     } else {
       ElMessage.error(err.response?.data?.msg || "导入失败，请检查文件格式");
     }
@@ -277,17 +270,14 @@ const handleExport = async () => {
   try {
     const res = await adminApi.exportCourseAssignments();
 
-    // 创建临时的下载链接
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const link = document.createElement("a");
     link.href = url;
-    // 设置下载文件名
     link.setAttribute("download", "任课分配表(可直接导入).xlsx");
 
     document.body.appendChild(link);
     link.click();
 
-    // 清理
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   } catch (err) {

@@ -336,21 +336,21 @@ import {
 import { ElMessage } from "element-plus";
 import { Delete, Download, Upload } from "@element-plus/icons-vue";
 
-// --- 1. 学年与状态逻辑 ---
+// 学年按 9 月切换。
 const now = new Date();
 const currentRealYear = now.getFullYear();
 const defaultAcademicYear =
   now.getMonth() >= 8 ? currentRealYear : currentRealYear - 1;
 
 const currentAcademicYear = ref(defaultAcademicYear);
-const filterStatus = ref("在职"); // 默认只看在职
+const filterStatus = ref("在职");
 
 const academicYearOptions = computed(() => {
   const years = [];
   for (let i = -2; i < 3; i++) {
     years.push(defaultAcademicYear + i);
   }
-  return years.sort((a, b) => b - a); // 降序
+  return years.sort((a, b) => b - a);
 });
 
 const teachers = ref([]);
@@ -360,7 +360,6 @@ const editVisible = ref(false);
 const activeTab = ref("basic");
 
 const currentYear = new Date().getFullYear();
-// 修改：统一显示 xx级，去掉初x表述
 const gradeYearOptions = [
   { year: currentYear, label: `${currentYear}级` },
   { year: currentYear - 1, label: `${currentYear - 1}级` },
@@ -384,7 +383,6 @@ const form = reactive({
 });
 
 const fetchData = async () => {
-  // 传入学年和状态参数
   const res = await getTeachers({
     academic_year: currentAcademicYear.value,
     status: filterStatus.value,
@@ -392,7 +390,6 @@ const fetchData = async () => {
   teachers.value = res.data;
 };
 
-// 筛选变化时刷新
 const handleFilterChange = () => {
   fetchData();
 };
@@ -407,12 +404,11 @@ const fetchOptions = async () => {
 const editTeacher = (row) => {
   try {
     Object.assign(form, row);
-    // [修复] 加了默认值 []，防止 undefined 导致 JS 报错，从而让按钮“没反应”
+    // 兜底为空数组，避免 undefined 导致编辑弹窗报错。
     form.head_teacher_ids = [...(row.head_teacher_ids || [])];
     form.grade_leader_years = [...(row.grade_leader_years || [])];
     form.subject_group_ids = [...(row.subject_group_ids || [])];
 
-    // 同样处理备课组数据
     const rawPrep = row.prep_group_data || [];
     form.prep_group_data = rawPrep.map((i) => ({ ...i }));
 
@@ -433,7 +429,6 @@ const removePrep = (index) => {
 
 const saveTeacher = async () => {
   try {
-    // 提交数据带上当前选中的学年
     const submitData = {
       ...form,
       academic_year: currentAcademicYear.value,
@@ -480,7 +475,6 @@ const handleResetPwd = async (id) => {
 
 const handleExport = async () => {
   try {
-    // 传入当前选中的学年
     const res = await exportTeachers({
       academic_year: currentAcademicYear.value,
     });
@@ -488,7 +482,6 @@ const handleExport = async () => {
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const link = document.createElement("a");
     link.href = url;
-    // 文件名可以由后端 header 决定，也可以这里自己定
     link.setAttribute(
       "download",
       `${currentAcademicYear.value}学年_教师信息表.xlsx`,

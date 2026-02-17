@@ -43,7 +43,7 @@ const handleUpdate = async () => {
     await updateSystemSettings({ allow_register: settings.allow_register });
     ElMessage.success("设置已更新");
   } catch (e) {
-    // 失败回滚开关状态
+    // 更新失败时恢复开关，避免界面状态与服务端不一致。
     settings.allow_register = !settings.allow_register;
     ElMessage.error("更新失败");
   }

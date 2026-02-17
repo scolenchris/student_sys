@@ -193,19 +193,16 @@ const subjects = ref([]);
 const loading = ref(false);
 const dialogVisible = ref(false);
 
-// --- 学年逻辑 ---
+// 学年按 8 月切换：8 月前为上一学年，8 月及以后为当前学年。
 const now = new Date();
 const currentRealYear = now.getFullYear();
-// 如果是8月前，当前学年是去年；8月后，当前学年是今年
 const defaultAcademicYear =
   now.getMonth() >= 7 ? currentRealYear : currentRealYear - 1;
 
-// 筛选状态
 const filterAcademicYear = ref(defaultAcademicYear);
 const filterEntryYear = ref(null);
 const filterSubject = ref(null);
 
-// 学年选项 (前后3年)
 const academicYearOptions = computed(() => {
   const years = [];
   for (let i = -2; i < 3; i++) {
@@ -214,9 +211,7 @@ const academicYearOptions = computed(() => {
   return years.sort((a, b) => b - a);
 });
 
-// 年级选项 (最近3届)
 const gradeOptions = computed(() => {
-  // 这里的 base 逻辑最好与 academicYear 挂钩，或者直接用当前时间
   const base = now.getMonth() >= 7 ? currentRealYear : currentRealYear - 1;
   return [
     { year: base, label: `${base}级` },
@@ -245,7 +240,7 @@ const predefinedTypes = [
 ];
 
 const form = reactive({
-  academic_year: defaultAcademicYear, // 新增
+  academic_year: defaultAcademicYear,
   entry_year: null,
   name: "",
   subject_id: null,
@@ -257,7 +252,7 @@ const fetchTasks = async () => {
   loading.value = true;
   try {
     const res = await getExamTasks({
-      academic_year: filterAcademicYear.value, // 传参
+      academic_year: filterAcademicYear.value,
       entry_year: filterEntryYear.value,
       subject_id: filterSubject.value,
     });
@@ -273,7 +268,7 @@ const fetchSubjects = async () => {
 };
 
 const openDialog = () => {
-  // 重置表单，默认选中当前筛选的学年，方便连续录入
+  // 默认沿用当前筛选学年，便于连续录入。
   form.academic_year = filterAcademicYear.value || defaultAcademicYear;
   form.entry_year = null;
   form.name = "";

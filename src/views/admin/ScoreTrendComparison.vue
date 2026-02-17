@@ -265,6 +265,7 @@ const filteredClassOptions = computed(() => {
   return allClassOptions.value.filter((c) => c.entry_year === query.entry_year);
 });
 
+// 仅变化模式：只显示任一考试节点有分数或排名变化的学生。
 const displayTableData = computed(() => {
   if (!onlyChanged.value) return tableData.value;
   return tableData.value.filter((row) => row.has_change);
@@ -343,6 +344,8 @@ const getExamData = (row, examName) => {
   return row?.exam_data?.[examName] || {};
 };
 
+// 变化值统一格式：
+// 正数显示 +n，0 显示 0，空值和非法值显示 -。
 const formatDelta = (value) => {
   if (value === null || value === undefined) return "-";
   const num = Number(value);
