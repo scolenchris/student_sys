@@ -19,6 +19,19 @@
       <el-table-column prop="entry_year" label="入学年份" />
       <el-table-column prop="grade_name" label="当前年级" />
       <el-table-column prop="class_num" label="班号" />
+      <el-table-column prop="student_count" label="学生数" width="90" />
+      <el-table-column label="操作" width="120" fixed="right">
+        <template #default="{ row }">
+          <el-button
+            type="danger"
+            link
+            :loading="deletingClassId === row.id"
+            @click="handleDeleteClass(row)"
+          >
+            删除
+          </el-button>
+        </template>
+      </el-table-column>
     </el-table>
 
     <!-- <el-dialog v-model="addVisible" title="新增班级" width="350px">
@@ -40,12 +53,13 @@
 
 <script setup>
 import { ref, reactive, onMounted } from "vue";
-import { getClasses, addClass } from "../../api/admin"; // 确保引用了 api
-import { ElMessage } from "element-plus";
+import { getClasses, addClass, deleteClass } from "../../api/admin"; // 确保引用了 api
+import { ElMessage, ElMessageBox } from "element-plus";
 
 const classes = ref([]);
 const addVisible = ref(false);
 const submitting = ref(false);
+const deletingClassId = ref(null);
 
 const newClass = reactive({
   entry_year: new Date().getFullYear(),
@@ -78,6 +92,41 @@ const submitClass = async () => {
     ElMessage.error(error.response?.data?.msg || "添加失败");
   } finally {
     submitting.value = false;
+  }
+};
+
+const handleDeleteClass = async (row) => {
+  if (!row || !row.id) return;
+
+  if ((row.student_count || 0) > 0) {
+    return ElMessage.warning("该班级仍有学生，无法删除。请先完成学籍调整。");
+  }
+
+  const classLabel = `${row.grade_name}(${row.class_num})班`;
+
+  try {
+    await ElMessageBox.confirm(
+      `确认删除班级【${classLabel}】？删除后无法恢复。`,
+      "删除确认",
+      {
+        type: "warning",
+        confirmButtonText: "确认删除",
+        cancelButtonText: "取消",
+      },
+    );
+  } catch {
+    return;
+  }
+
+  deletingClassId.value = row.id;
+  try {
+    const res = await deleteClass(row.id);
+    ElMessage.success(res.data?.msg || "班级删除成功");
+    fetchClasses();
+  } catch (error) {
+    ElMessage.error(error.response?.data?.msg || "删除失败");
+  } finally {
+    deletingClassId.value = null;
   }
 };
 

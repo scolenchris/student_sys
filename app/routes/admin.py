@@ -673,6 +673,7 @@ def get_classes():
                 "entry_year": c.entry_year,
                 "class_num": c.class_num,
                 "grade_name": c.grade_display,  # 使用我们在 models 定义的动态计算属性
+                "student_count": c.students.count(),
             }
             for c in classes
         ]
@@ -686,6 +687,36 @@ def add_class():
     db.session.add(new_class)
     db.session.commit()
     return jsonify({"msg": "班级创建成功"})
+
+
+@admin_bp.route("/classes/<int:class_id>", methods=["DELETE"])
+def delete_class(class_id):
+    cls = ClassInfo.query.get(class_id)
+    if not cls:
+        return jsonify({"msg": "班级不存在"}), 404
+
+    student_count = Student.query.filter_by(class_id=class_id).count()
+    if student_count > 0:
+        return (
+            jsonify(
+                {
+                    "msg": f"删除失败：该班级仍有 {student_count} 名学生，请先完成学籍调整后再删除。"
+                }
+            ),
+            400,
+        )
+
+    try:
+        # 班级为空时，顺带清理该班级的任课/班主任分配，避免残留脏数据
+        CourseAssignment.query.filter_by(class_id=class_id).delete()
+        HeadTeacherAssignment.query.filter_by(class_id=class_id).delete()
+
+        db.session.delete(cls)
+        db.session.commit()
+        return jsonify({"msg": "班级删除成功"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": f"班级删除失败: {str(e)}"}), 500
 
 
 # --- 4. 学生学籍管理 ---

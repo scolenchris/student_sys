@@ -17,6 +17,7 @@ export const updateTeacher = (id, data) => api.put(`/teachers/${id}`, data);
 // --- 班级管理 ---
 export const getClasses = () => api.get("/classes");
 export const addClass = (data) => api.post("/classes", data);
+export const deleteClass = (id) => api.delete(`/classes/${id}`);
 
 // --- 学生管理 ---
 export const getStudents = (params) => api.get("/students", { params });
