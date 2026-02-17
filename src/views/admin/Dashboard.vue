@@ -14,6 +14,7 @@
         <el-menu-item index="/admin/classes">班级管理</el-menu-item>
         <el-menu-item index="/admin/students">学籍管理</el-menu-item>
         <el-menu-item index="/admin/stats">成绩管理与成绩排名统计</el-menu-item>
+        <el-menu-item index="/admin/score-trend">成绩与排名变化比较</el-menu-item>
         <el-menu-item index="/admin/score-entry">手动成绩录入</el-menu-item>
         <el-menu-item index="/admin/assignments">任课分配</el-menu-item>
         <el-menu-item index="/admin/exams">考试发布管理</el-menu-item>

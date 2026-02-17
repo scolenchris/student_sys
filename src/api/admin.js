@@ -30,6 +30,8 @@ export const getExamNames = (entry_year) =>
   api.get("/stats/exam_names", { params: { entry_year } });
 export const getComprehensiveReport = (data) =>
   api.post("/stats/comprehensive_report", data);
+export const getScoreRankTrend = (data) =>
+  api.post("/stats/score_rank_trend", data);
 
 // --- 科目登记 ---
 export const getAssignments = (params) => api.get("/assignments", { params });

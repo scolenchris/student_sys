@@ -40,6 +40,10 @@ const routes = [
         component: () => import("../views/admin/ScoreStats.vue"),
       },
       {
+        path: "score-trend",
+        component: () => import("../views/admin/ScoreTrendComparison.vue"),
+      },
+      {
         path: "assignments",
         component: () => import("../views/admin/CourseAssignment.vue"),
       },
