@@ -32,6 +32,10 @@ export const getComprehensiveReport = (data) =>
   api.post("/stats/comprehensive_report", data);
 export const getScoreRankTrend = (data) =>
   api.post("/stats/score_rank_trend", data);
+export const exportScoreRankTrendExcel = (data) =>
+  api.post("/stats/score_rank_trend_export", data, {
+    responseType: "blob",
+  });
 
 // --- 科目登记 ---
 export const getAssignments = (params) => api.get("/assignments", { params });

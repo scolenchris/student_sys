@@ -1064,9 +1064,7 @@ def get_comprehensive_report():
     return jsonify({"data": final_output, "subjects": ordered_subject_names})
 
 
-@admin_bp.route("/stats/score_rank_trend", methods=["POST"])
-def get_score_rank_trend():
-    data = request.get_json() or {}
+def _build_score_rank_trend_payload(data):
     entry_year = data.get("entry_year")
     exam_names_raw = data.get("exam_names", [])
     subject_ids_raw = data.get("subject_ids", [])
@@ -1075,7 +1073,7 @@ def get_score_rank_trend():
     try:
         entry_year = int(entry_year)
     except (TypeError, ValueError):
-        return jsonify({"msg": "请选择有效的年级"}), 400
+        return None, ("请选择有效的年级", 400)
 
     # 去重并保持原顺序
     exam_names = []
@@ -1112,9 +1110,9 @@ def get_score_rank_trend():
         class_ids.append(cid_int)
 
     if not exam_names:
-        return jsonify({"msg": "请至少选择一次考试"}), 400
+        return None, ("请至少选择一次考试", 400)
     if not subject_ids:
-        return jsonify({"msg": "请至少选择一个科目"}), 400
+        return None, ("请至少选择一个科目", 400)
 
     grade_classes = (
         ClassInfo.query.filter_by(entry_year=entry_year)
@@ -1122,7 +1120,7 @@ def get_score_rank_trend():
         .all()
     )
     if not grade_classes:
-        return jsonify({"subjects": [], "exams": [], "rows": [], "warnings": []})
+        return {"subjects": [], "exams": [], "rows": [], "warnings": []}, None
 
     all_grade_class_ids = [c.id for c in grade_classes]
     class_name_map = {c.id: c.full_name for c in grade_classes}
@@ -1135,15 +1133,13 @@ def get_score_rank_trend():
 
     if not target_class_ids:
         return (
-            jsonify(
-                {
-                    "subjects": [],
-                    "exams": [],
-                    "rows": [],
-                    "warnings": ["筛选班级不属于当前年级，未返回数据。"],
-                }
-            ),
-            200,
+            {
+                "subjects": [],
+                "exams": [],
+                "rows": [],
+                "warnings": ["筛选班级不属于当前年级，未返回数据。"],
+            },
+            None,
         )
 
     students = (
@@ -1154,7 +1150,7 @@ def get_score_rank_trend():
         .all()
     )
     if not students:
-        return jsonify({"subjects": [], "exams": [], "rows": [], "warnings": []})
+        return {"subjects": [], "exams": [], "rows": [], "warnings": []}, None
 
     student_ids = [s.id for s in students]
 
@@ -1166,7 +1162,7 @@ def get_score_rank_trend():
     subject_name_by_id = {sid: subject_obj_map[sid].name for sid in ordered_subject_ids}
 
     if not ordered_subject_ids:
-        return jsonify({"subjects": [], "exams": [], "rows": [], "warnings": []})
+        return {"subjects": [], "exams": [], "rows": [], "warnings": []}, None
 
     # 规则排序时先走系统预设科目优先级，再补上其他科目
     tie_break_subjects = [n for n in SUBJECT_PRIORITY if n in ordered_subject_names]
@@ -1224,14 +1220,12 @@ def get_score_rank_trend():
         )
 
     if not exams:
-        return jsonify(
-            {
-                "subjects": ordered_subject_names,
-                "exams": [],
-                "rows": [],
-                "warnings": warnings,
-            }
-        )
+        return {
+            "subjects": ordered_subject_names,
+            "exams": [],
+            "rows": [],
+            "warnings": warnings,
+        }, None
 
     # 批量拉取成绩
     all_task_ids = list(task_info_by_id.keys())
@@ -1413,13 +1407,196 @@ def get_score_rank_trend():
             }
         )
 
-    return jsonify(
-        {
-            "subjects": ordered_subject_names,
-            "exams": exams,
-            "rows": rows,
-            "warnings": warnings,
-        }
+    return {
+        "subjects": ordered_subject_names,
+        "exams": exams,
+        "rows": rows,
+        "warnings": warnings,
+    }, None
+
+
+@admin_bp.route("/stats/score_rank_trend", methods=["POST"])
+def get_score_rank_trend():
+    payload, err = _build_score_rank_trend_payload(request.get_json() or {})
+    if err:
+        msg, status = err
+        return jsonify({"msg": msg}), status
+    return jsonify(payload)
+
+
+def _normalize_excel_sheet_name(raw_name, used_names):
+    name = re.sub(r"[\\/*?:\[\]]", "_", str(raw_name or "Sheet")).strip()
+    name = name.strip("'")
+    if not name:
+        name = "Sheet"
+    name = name[:31]
+
+    base_name = name
+    index = 2
+    while name in used_names:
+        suffix = f"_{index}"
+        name = f"{base_name[: 31 - len(suffix)]}{suffix}"
+        index += 1
+
+    used_names.add(name)
+    return name
+
+
+def _to_excel_value(value):
+    if value is None:
+        return "-"
+    if isinstance(value, float):
+        return round(value, 1)
+    return value
+
+
+@admin_bp.route("/stats/score_rank_trend_export", methods=["POST"])
+def export_score_rank_trend_excel():
+    data = request.get_json() or {}
+    only_changed = bool(data.get("only_changed", False))
+
+    payload, err = _build_score_rank_trend_payload(data)
+    if err:
+        msg, status = err
+        return jsonify({"msg": msg}), status
+
+    subjects = payload.get("subjects", [])
+    exams = payload.get("exams", [])
+    rows = payload.get("rows", [])
+    warnings = payload.get("warnings", [])
+
+    if only_changed:
+        rows = [row for row in rows if row.get("has_change")]
+
+    if not exams:
+        return jsonify({"msg": "当前筛选条件下无可导出的考试数据"}), 400
+
+    # 若筛选“仅变化”后没有记录，也允许导出空表头
+    output = io.BytesIO()
+    used_sheet_names = set()
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        # 1) 总分变化工作表
+        total_columns = ["学号", "姓名", "班级", "状态"]
+        for idx, exam in enumerate(exams):
+            exam_name = exam.get("name", "")
+            total_columns.append(f"{exam_name}-总分")
+            total_columns.append(f"{exam_name}-级排")
+            total_columns.append(f"{exam_name}-班排")
+            if idx > 0:
+                prev_exam_name = exams[idx - 1].get("name", "")
+                total_columns.append(f"{prev_exam_name}->{exam_name}-总分变化")
+                total_columns.append(f"{prev_exam_name}->{exam_name}-级排变化")
+                total_columns.append(f"{prev_exam_name}->{exam_name}-班排变化")
+
+        total_records = []
+        for row in rows:
+            base = {
+                "学号": row.get("student_id", ""),
+                "姓名": row.get("name", ""),
+                "班级": row.get("class_name", ""),
+                "状态": row.get("status", ""),
+            }
+            exam_data_map = row.get("exam_data", {})
+
+            for idx, exam in enumerate(exams):
+                exam_name = exam.get("name", "")
+                exam_data = exam_data_map.get(exam_name, {})
+                base[f"{exam_name}-总分"] = _to_excel_value(exam_data.get("total"))
+                base[f"{exam_name}-级排"] = _to_excel_value(exam_data.get("grade_rank"))
+                base[f"{exam_name}-班排"] = _to_excel_value(exam_data.get("class_rank"))
+                if idx > 0:
+                    prev_exam_name = exams[idx - 1].get("name", "")
+                    base[f"{prev_exam_name}->{exam_name}-总分变化"] = _to_excel_value(
+                        exam_data.get("total_change")
+                    )
+                    base[f"{prev_exam_name}->{exam_name}-级排变化"] = _to_excel_value(
+                        exam_data.get("grade_rank_change")
+                    )
+                    base[f"{prev_exam_name}->{exam_name}-班排变化"] = _to_excel_value(
+                        exam_data.get("class_rank_change")
+                    )
+            total_records.append(base)
+
+        total_df = pd.DataFrame(total_records).reindex(columns=total_columns)
+        total_sheet_name = _normalize_excel_sheet_name("总分变化", used_sheet_names)
+        total_df.to_excel(writer, index=False, sheet_name=total_sheet_name)
+
+        # 2) 各科变化工作表（每科一张）
+        for subject_name in subjects:
+            subject_columns = ["学号", "姓名", "班级", "状态"]
+            for idx, exam in enumerate(exams):
+                exam_name = exam.get("name", "")
+                subject_columns.append(f"{exam_name}-成绩")
+                subject_columns.append(f"{exam_name}-级排")
+                subject_columns.append(f"{exam_name}-班排")
+                if idx > 0:
+                    prev_exam_name = exams[idx - 1].get("name", "")
+                    subject_columns.append(f"{prev_exam_name}->{exam_name}-变化")
+                    subject_columns.append(f"{prev_exam_name}->{exam_name}-级排变化")
+                    subject_columns.append(f"{prev_exam_name}->{exam_name}-班排变化")
+
+            subject_records = []
+            for row in rows:
+                base = {
+                    "学号": row.get("student_id", ""),
+                    "姓名": row.get("name", ""),
+                    "班级": row.get("class_name", ""),
+                    "状态": row.get("status", ""),
+                }
+                exam_data_map = row.get("exam_data", {})
+
+                for idx, exam in enumerate(exams):
+                    exam_name = exam.get("name", "")
+                    exam_data = exam_data_map.get(exam_name, {})
+                    score_map = exam_data.get("scores", {}) or {}
+                    score_change_map = exam_data.get("score_changes", {}) or {}
+
+                    base[f"{exam_name}-成绩"] = _to_excel_value(
+                        score_map.get(subject_name)
+                    )
+                    base[f"{exam_name}-级排"] = _to_excel_value(
+                        exam_data.get("grade_rank")
+                    )
+                    base[f"{exam_name}-班排"] = _to_excel_value(
+                        exam_data.get("class_rank")
+                    )
+                    if idx > 0:
+                        prev_exam_name = exams[idx - 1].get("name", "")
+                        base[f"{prev_exam_name}->{exam_name}-变化"] = _to_excel_value(
+                            score_change_map.get(subject_name)
+                        )
+                        base[f"{prev_exam_name}->{exam_name}-级排变化"] = _to_excel_value(
+                            exam_data.get("grade_rank_change")
+                        )
+                        base[f"{prev_exam_name}->{exam_name}-班排变化"] = _to_excel_value(
+                            exam_data.get("class_rank_change")
+                        )
+                subject_records.append(base)
+
+            subject_df = pd.DataFrame(subject_records).reindex(columns=subject_columns)
+            subject_sheet_name = _normalize_excel_sheet_name(
+                f"{subject_name}变化", used_sheet_names
+            )
+            subject_df.to_excel(writer, index=False, sheet_name=subject_sheet_name)
+
+        # 3) 可选说明工作表
+        if warnings:
+            warn_df = pd.DataFrame([{"提示": w} for w in warnings])
+            warn_sheet_name = _normalize_excel_sheet_name("导出说明", used_sheet_names)
+            warn_df.to_excel(writer, index=False, sheet_name=warn_sheet_name)
+
+    output.seek(0)
+
+    entry_year = str(data.get("entry_year", "")).strip() or "未指定年级"
+    suffix = "_仅变化" if only_changed else ""
+    filename = f"{entry_year}级_成绩变化比较{suffix}.xlsx"
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
     )
 
 

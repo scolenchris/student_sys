@@ -8,10 +8,11 @@
           <el-button
             type="success"
             plain
-            @click="exportCSV"
+            @click="exportExcel"
+            :loading="exporting"
             :disabled="displayTableData.length === 0"
           >
-            <el-icon><Download /></el-icon> 导出CSV
+            <el-icon><Download /></el-icon> 导出Excel
           </el-button>
         </div>
       </div>
@@ -228,11 +229,13 @@ import {
   getClasses,
   getExamNames,
   getScoreRankTrend,
+  exportScoreRankTrendExcel,
 } from "../../api/admin";
 import { ElMessage } from "element-plus";
 import { Search, Download } from "@element-plus/icons-vue";
 
 const loading = ref(false);
+const exporting = ref(false);
 const onlyChanged = ref(false);
 
 const subjectOptions = ref([]);
@@ -355,63 +358,41 @@ const getDeltaClass = (value) => {
   return num > 0 ? "delta-up" : "delta-down";
 };
 
-const toCSVCell = (value) => {
-  const str = value === null || value === undefined ? "-" : String(value);
-  return `"${str.replace(/"/g, '""')}"`;
-};
+const exportExcel = async () => {
+  if (!query.entry_year) return ElMessage.warning("请选择年级");
+  if (query.exam_names.length < 2)
+    return ElMessage.warning("请至少选择2次考试");
+  if (query.subject_ids.length === 0)
+    return ElMessage.warning("请至少选择一个科目");
 
-const exportCSV = () => {
-  if (!displayTableData.value.length) return;
-
-  const headers = ["学号", "姓名", "班级", "状态"];
-  examsMeta.value.forEach((exam) => {
-    headers.push(
-      `${exam.name}-科目成绩`,
-      `${exam.name}-总分`,
-      `${exam.name}-分差`,
-      `${exam.name}-级排`,
-      `${exam.name}-级排变化`,
-      `${exam.name}-班排`,
-      `${exam.name}-班排变化`,
-    );
-  });
-
-  let csvContent =
-    "data:text/csv;charset=utf-8,\ufeff" + headers.map(toCSVCell).join(",") + "\n";
-
-  displayTableData.value.forEach((row) => {
-    const line = [row.student_id, row.name, row.class_name, row.status];
-
-    examsMeta.value.forEach((exam) => {
-      const examData = getExamData(row, exam.name);
-      const scoreText = subjectColumns.value
-        .map((sub) => `${sub}:${examData.scores?.[sub] ?? "-"}`)
-        .join("；");
-
-      line.push(
-        scoreText,
-        examData.total ?? "-",
-        formatDelta(examData.total_change),
-        examData.grade_rank ?? "-",
-        formatDelta(examData.grade_rank_change),
-        examData.class_rank ?? "-",
-        formatDelta(examData.class_rank_change),
-      );
+  exporting.value = true;
+  try {
+    const res = await exportScoreRankTrendExcel({
+      entry_year: query.entry_year,
+      class_ids: query.class_ids,
+      exam_names: query.exam_names,
+      subject_ids: query.subject_ids,
+      only_changed: onlyChanged.value,
     });
 
-    csvContent += line.map(toCSVCell).join(",") + "\n";
-  });
+    const blob = new Blob([res.data], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
 
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute(
-    "download",
-    `${query.entry_year}级_成绩与排名变化比较_${new Date().getTime()}.csv`,
-  );
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+    const suffix = onlyChanged.value ? "_仅变化" : "";
+    link.setAttribute("download", `${query.entry_year}级_成绩变化比较${suffix}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    ElMessage.error(err.response?.data?.msg || "导出失败");
+  } finally {
+    exporting.value = false;
+  }
 };
 
 onMounted(initData);
