@@ -93,6 +93,17 @@ def _serialize_teacher(teacher):
     }
 
 
+def _apply_teacher_status_to_account(user, status):
+    if not user:
+        return
+
+    normalized = str(status).strip()
+    if normalized in ["退休", "离职", "非在职"]:
+        user.is_approved = False
+    elif normalized in ["在职", "返聘"]:
+        user.is_approved = True
+
+
 def _serialize_student(student):
     return {
         "student_id": student.student_id,
@@ -557,11 +568,18 @@ def update_teacher(t_id):
     teacher.gender = data.get("gender", teacher.gender)
     teacher.ethnicity = data.get("ethnicity", teacher.ethnicity)
     teacher.phone = data.get("phone", teacher.phone)
-    teacher.status = data.get("status", teacher.status)
     teacher.job_title = data.get("job_title", teacher.job_title)
     teacher.education = data.get("education", teacher.education)
     teacher.major = data.get("major", teacher.major)
     teacher.remarks = data.get("remarks", teacher.remarks)
+
+    if "status" in data:
+        new_status = data.get("status")
+        if isinstance(new_status, str):
+            new_status = new_status.strip()
+        if new_status:
+            teacher.status = new_status
+            _apply_teacher_status_to_account(teacher.user, new_status)
 
     # --- 2. 更新职务 (严格限定在 target_year) ---
 
@@ -1578,13 +1596,9 @@ def import_teachers_excel():
                 teacher.status = new_status
 
                 # 状态逻辑判断
+                _apply_teacher_status_to_account(user, new_status)
                 if new_status in ["退休", "离职", "非在职"]:
-                    # 自动冻结账号
-                    user.is_approved = False
                     frozen_count += 1
-                elif new_status in ["在职", "返聘"]:
-                    # 确保账号是激活状态 (用于返聘场景)
-                    user.is_approved = True
 
             # C. 插入行政职务 (此时数据已安全)
 
