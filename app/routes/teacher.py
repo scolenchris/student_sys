@@ -11,24 +11,15 @@ from app.models import (
     Score,
     ExamTask,
 )
-from flask import g
-from app.auth import login_required, role_required
 
 teacher_bp = Blueprint("teacher", __name__)
 
 
-@teacher_bp.before_request
-@login_required
-@role_required("teacher")
-def require_teacher_auth():
-    return None
-
-
 # --- 1. 获取当前老师的任教课程 ---
-@teacher_bp.route("/my_courses", methods=["GET"])
-def get_my_courses():
-    # 找到当前登录用户的教师档案
-    teacher = Teacher.query.filter_by(user_id=g.current_user.id).first()
+@teacher_bp.route("/my_courses/<int:user_id>", methods=["GET"])
+def get_my_courses(user_id):
+    # 找到该用户的教师档案
+    teacher = Teacher.query.filter_by(user_id=user_id).first()
     if not teacher:
         return jsonify([]), 200
 
