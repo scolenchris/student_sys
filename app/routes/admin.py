@@ -26,8 +26,16 @@ from datetime import datetime
 import re
 import io
 from docxtpl import DocxTemplate
+from app.auth import login_required, role_required
 
 admin_bp = Blueprint("admin", __name__)
+
+
+@admin_bp.before_request
+@login_required
+@role_required("admin")
+def require_admin_auth():
+    return None
 
 SUBJECT_PRIORITY = [
     "语文",
