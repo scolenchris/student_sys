@@ -1,7 +1,7 @@
-from flask import Flask, request, session, g
+from flask import Flask, request
 from flask_cors import CORS
 from config import Config
-from .models import db, User
+from .models import db
 from sqlalchemy.exc import OperationalError
 from flask import jsonify
 import os
@@ -34,23 +34,8 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
 
     # 初始化插件
-    CORS(app, supports_credentials=True)
+    CORS(app)
     db.init_app(app)
-
-    @app.before_request
-    def load_current_user():
-        user_id = session.get("user_id")
-        if not user_id:
-            g.current_user = None
-            return
-
-        user = User.query.get(user_id)
-        if not user:
-            session.clear()
-            g.current_user = None
-            return
-
-        g.current_user = user
 
     @app.errorhandler(413)
     def request_entity_too_large(error):

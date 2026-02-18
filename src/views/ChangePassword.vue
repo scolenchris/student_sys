@@ -64,7 +64,9 @@ const handleSubmit = async () => {
   }
 
   try {
+    const userId = localStorage.getItem("user_id");
     await changePasswordApi({
+      user_id: userId,
       old_password: form.old_password,
       new_password: form.new_password,
     });

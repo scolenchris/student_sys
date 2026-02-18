@@ -1,6 +1,5 @@
-from flask import Blueprint, request, jsonify, session, g
+from flask import Blueprint, request, jsonify
 from app.models import db, User, SystemSetting
-from app.auth import login_required
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -47,9 +46,6 @@ def login():
     if not user.is_approved:
         return jsonify({"msg": "账号正在审核中，请联系系主任"}), 403
 
-    session["user_id"] = user.id
-    session["role"] = user.role
-
     return (
         jsonify(
             {
@@ -65,13 +61,13 @@ def login():
 
 
 @auth_bp.route("/change_password", methods=["POST"])
-@login_required
 def change_password():
     data = request.get_json()
+    user_id = data.get("user_id")
     old_password = data.get("old_password")
     new_password = data.get("new_password")
 
-    user = g.current_user
+    user = User.query.get(user_id)
     if not user:
         return jsonify({"msg": "用户不存在"}), 404
 
@@ -93,10 +89,3 @@ def get_register_config():
     if setting and setting.value == "0":
         is_open = False
     return jsonify({"allow_register": is_open})
-
-
-@auth_bp.route("/logout", methods=["POST"])
-@login_required
-def logout():
-    session.clear()
-    return jsonify({"msg": "已退出登录"}), 200

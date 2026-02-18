@@ -200,9 +200,10 @@ const handleEnter = (index) => {
 };
 
 const fetchMyCourses = async () => {
-  if (!localStorage.getItem("user_id")) return router.push("/");
+  const userId = localStorage.getItem("user_id");
+  if (!userId) return router.push("/");
   try {
-    const res = await getMyCourses();
+    const res = await getMyCourses(userId);
     myCourses.value = res.data;
   } catch (err) {
     console.error(err);
