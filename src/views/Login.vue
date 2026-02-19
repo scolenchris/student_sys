@@ -109,6 +109,11 @@ const handleSubmit = async () => {
         password: form.password,
       });
 
+      if (!res.data.access_token) {
+        return ElMessage.error("登录凭证缺失，请联系管理员检查服务端配置");
+      }
+
+      localStorage.setItem("access_token", res.data.access_token);
       localStorage.setItem("user_id", res.data.user_id);
       localStorage.setItem("user_role", res.data.role);
       localStorage.setItem("username", res.data.username);

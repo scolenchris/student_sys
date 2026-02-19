@@ -28,4 +28,6 @@ class Config:
     }
 
     # JWT 或 Session 过期时间设置（可选）
-    # JWT_ACCESS_TOKEN_EXPIRES = 3600
+    AUTH_TOKEN_EXPIRES_SECONDS = int(
+        os.environ.get("AUTH_TOKEN_EXPIRES_SECONDS", 12 * 60 * 60)
+    )

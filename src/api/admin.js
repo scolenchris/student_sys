@@ -7,6 +7,15 @@ const api = axios.create({
   timeout: 5000,
 });
 
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("access_token");
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // 用户与教师管理
 export const getPendingUsers = () => api.get("/pending_users");
 export const approveUser = (id) => api.post(`/approve_user/${id}`);

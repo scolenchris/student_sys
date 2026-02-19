@@ -98,8 +98,16 @@ export const router = createRouter({
 
 // 全局守卫：登录态校验、强制改密与角色权限控制。
 router.beforeEach((to, from, next) => {
-  const role = localStorage.getItem("user_role");
-  const isAuthenticated = !!role;
+  let role = localStorage.getItem("user_role");
+  let token = localStorage.getItem("access_token");
+
+  if ((role && !token) || (!role && token)) {
+    localStorage.clear();
+    role = null;
+    token = null;
+  }
+
+  const isAuthenticated = !!role && !!token;
   const mustChangePwd = localStorage.getItem("must_change_password") === "true";
 
   if (to.path === "/") {

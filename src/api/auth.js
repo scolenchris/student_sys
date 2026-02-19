@@ -7,6 +7,15 @@ const api = axios.create({
   timeout: 5000,
 });
 
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("access_token");
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export const loginApi = (data) => api.post("/auth/login", data);
 export const registerApi = (data) => api.post("/auth/register", data);
 export const changePasswordApi = (data) =>

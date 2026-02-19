@@ -7,8 +7,17 @@ const api = axios.create({
   timeout: 5000,
 });
 
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("access_token");
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // 教师任教课程
-export const getMyCourses = (userId) => api.get(`/my_courses/${userId}`);
+export const getMyCourses = () => api.get("/my_courses");
 
 // 成绩列表
 export const getScoreList = (params) => api.get("/score_list", { params });
