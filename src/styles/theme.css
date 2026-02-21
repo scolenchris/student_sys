@@ -1,0 +1,95 @@
+:root {
+  --app-font: "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --brand-primary: #1f78cf;
+  --brand-primary-soft: #d8ebff;
+  --brand-success: #2f9e74;
+  --brand-warning: #e89b2f;
+  --brand-text: #163a5d;
+  --brand-text-light: #607896;
+  --surface-card: #ffffff;
+  --surface-bg: #f3f7fd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--app-font);
+  color: var(--brand-text);
+  background:
+    radial-gradient(circle at 12% 20%, #f5fbff 0, #f5fbff 18%, transparent 40%),
+    radial-gradient(circle at 80% 0, #ebf5ff 0, #ebf5ff 20%, transparent 42%),
+    var(--surface-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+}
+
+.el-card {
+  border-radius: 14px;
+  border: 1px solid #dbe8f7;
+  box-shadow: 0 8px 18px rgba(20, 60, 94, 0.07);
+}
+
+.el-card__header {
+  border-bottom: 1px solid #e7eef8;
+}
+
+.el-table {
+  --el-table-border-color: #d9e5f4;
+  --el-table-header-bg-color: #f2f7ff;
+  --el-table-row-hover-bg-color: #eef5ff;
+}
+
+.el-table th.el-table__cell {
+  color: #2f4f73;
+}
+
+.el-table td.el-table__cell {
+  color: #355778;
+}
+
+.el-button {
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: 10px;
+}
+
+.el-form-item__label {
+  color: #4f6a87;
+  font-weight: 600;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #edf2fa;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  background: #b6c9e0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #96b1ce;
+}

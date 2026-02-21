@@ -16,9 +16,13 @@ const routes = [
   {
     path: "/admin",
     component: AdminDashboard,
-    redirect: "/admin/approval",
+    redirect: "/admin/overview",
     meta: { requiresAuth: true, role: "admin" },
     children: [
+      {
+        path: "overview",
+        component: () => import("../views/admin/AdminOverview.vue"),
+      },
       {
         path: "approval",
         component: () => import("../views/admin/UserApproval.vue"),
@@ -114,7 +118,7 @@ router.beforeEach((to, from, next) => {
     if (isAuthenticated) {
       if (mustChangePwd) return next("/change-password");
 
-      if (role === "admin") return next("/admin/approval");
+      if (role === "admin") return next("/admin/overview");
       if (role === "teacher") return next("/teacher/scores");
     }
     return next();

@@ -1,10 +1,13 @@
 <template>
   <div class="pwd-container">
+    <div class="halo halo-a"></div>
+    <div class="halo halo-b"></div>
     <el-card class="pwd-card">
       <template #header>
-        <h2 style="text-align: center; color: #f56c6c">
-          为了账号安全，请修改初始密码
-        </h2>
+        <div class="title-wrap">
+          <h2>为了账号安全，请修改初始密码</h2>
+          <p>首次登录必须完成密码更新</p>
+        </div>
       </template>
       <el-form :model="form" label-width="80px">
         <el-form-item label="旧密码">
@@ -79,13 +82,56 @@ const handleSubmit = async () => {
 
 <style scoped>
 .pwd-container {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #f5f7fa;
+  background: linear-gradient(140deg, #f3f9ff 0%, #e7f1fb 45%, #f9fbff 100%);
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
 }
+
 .pwd-card {
   width: 400px;
+  border-radius: 16px;
+  z-index: 1;
+}
+
+.title-wrap {
+  text-align: center;
+}
+
+.title-wrap h2 {
+  margin: 0;
+  color: #dd4a65;
+  font-size: 22px;
+}
+
+.title-wrap p {
+  margin: 8px 0 0;
+  color: #6f88a4;
+  font-size: 13px;
+}
+
+.halo {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.halo-a {
+  width: 300px;
+  height: 300px;
+  left: -90px;
+  top: -90px;
+  background: rgba(79, 173, 255, 0.24);
+}
+
+.halo-b {
+  width: 320px;
+  height: 320px;
+  right: -120px;
+  bottom: -120px;
+  background: rgba(101, 209, 188, 0.24);
 }
 </style>
