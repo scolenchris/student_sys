@@ -134,6 +134,7 @@ export const updateSystemSettings = (data) =>
 // 导入历史与回退
 export const getImportHistory = (params) => api.get("/imports/history", { params });
 export const rollbackImportBatch = (id) => api.post(`/imports/${id}/rollback`);
+export const getAuditLogs = (params) => api.get("/audit_logs", { params });
 
 // 管理员成绩录入
 export const getAdminClassExams = (params) =>

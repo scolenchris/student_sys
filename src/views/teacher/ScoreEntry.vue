@@ -37,6 +37,27 @@
       </div>
     </template>
 
+    <div v-if="todoData.total_todos > 0" class="todo-panel">
+      <el-alert
+        title="⚠️ 待办提醒"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
+      <div class="todo-list">
+        <p v-for="item in todoData.pending_items" :key="`pending-${item.task_id}-${item.class_id}`" class="todo-item">
+          ⚠️ 待办：{{ item.msg }}
+        </p>
+        <p
+          v-for="item in todoData.abnormal_items"
+          :key="`abnormal-${item.task_id}-${item.class_id}`"
+          class="todo-item"
+        >
+          ⚠️ 待办：{{ item.msg }}
+        </p>
+      </div>
+    </div>
+
     <div v-if="!selectedExamId" class="empty-tip">
       请先按顺序选择 <b>班级科目</b> 和 <b>考试任务</b>
     </div>
@@ -74,7 +95,13 @@
         小提示：输入分数后按 <b>Enter (回车)</b> 可自动跳转下一行
       </div>
 
-      <el-table :data="students" border stripe v-loading="loading">
+      <el-table
+        :data="students"
+        border
+        stripe
+        v-loading="loading"
+        :row-class-name="getRowClassName"
+      >
         <el-table-column prop="student_no" label="学号" width="140" />
         <el-table-column prop="name" label="姓名" width="120" />
         <el-table-column :label="`成绩 (0-${currentExamInfo?.full_score})`">
@@ -155,10 +182,10 @@
 
 <script setup>
 import { ref, onMounted, computed } from "vue";
-import { useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElNotification } from "element-plus";
 import { Check, Download, Upload } from "@element-plus/icons-vue";
 import {
+  getDashboardTodos,
   getMyCourses,
   getScoreList,
   saveScores,
@@ -167,7 +194,6 @@ import {
   importScores,
 } from "../../api/teacher";
 
-const router = useRouter();
 const myCourses = ref([]);
 const selectedKey = ref(null);
 const selectedCourseInfo = ref(null);
@@ -179,12 +205,41 @@ const saving = ref(false);
 
 const resultDialogVisible = ref(false);
 const importSummary = ref({ msg: "", errors: [] });
+const todoData = ref({
+  pending_items: [],
+  abnormal_items: [],
+  total_todos: 0,
+});
+const hasTodoPopupShown = ref(false);
 
 const scoreInputRefs = ref({});
 
 const currentExamInfo = computed(() => {
   return examList.value.find((e) => e.id === selectedExamId.value);
 });
+
+const isAbnormalScore = (rawScore) => {
+  if (rawScore === null || rawScore === undefined) return false;
+
+  const text = String(rawScore).trim();
+  if (!text) return false;
+  if (text === "缺考") return true;
+
+  const isStandardNumber = /^-?(\d+\.?\d*|\.\d+)$/.test(text);
+  if (!isStandardNumber) return false;
+
+  const numericScore = Number(text);
+  if (Number.isNaN(numericScore)) return false;
+
+  const maxScore = Number(currentExamInfo.value?.full_score || 100);
+  if (numericScore < 0 || numericScore > maxScore) return false;
+
+  return numericScore < maxScore * 0.6;
+};
+
+const getRowClassName = ({ row }) => {
+  return isAbnormalScore(row.score) ? "abnormal-score-row" : "";
+};
 
 const setInputRef = (el, index) => {
   if (el) scoreInputRefs.value[index] = el;
@@ -205,6 +260,34 @@ const fetchMyCourses = async () => {
     myCourses.value = res.data;
   } catch (err) {
     console.error(err);
+  }
+};
+
+const fetchDashboardTodos = async ({ notify = false } = {}) => {
+  try {
+    const res = await getDashboardTodos();
+    const data = res.data || {};
+    todoData.value = {
+      pending_items: data.pending_items || [],
+      abnormal_items: data.abnormal_items || [],
+      total_todos: data.total_todos || 0,
+    };
+
+    if (
+      notify &&
+      !hasTodoPopupShown.value &&
+      (todoData.value.total_todos || 0) > 0
+    ) {
+      ElNotification({
+        title: "待办提醒",
+        type: "warning",
+        duration: 4000,
+        message: `您当前有 ${todoData.value.total_todos} 条待办，请优先处理未录完成绩。`,
+      });
+      hasTodoPopupShown.value = true;
+    }
+  } catch (err) {
+    console.error("获取待办提醒失败", err);
   }
 };
 
@@ -263,6 +346,7 @@ const saveAllScores = async () => {
     } else {
       ElMessage.success(data.msg || "保存成功");
     }
+    await fetchDashboardTodos();
   } catch (err) {
     ElMessage.error(err.response?.data?.msg || "保存失败");
   } finally {
@@ -317,6 +401,7 @@ const handleImport = async (param) => {
 
     // 导入后刷新名单，展示最新结果。
     handleExamChange(selectedExamId.value);
+    await fetchDashboardTodos();
   } catch (err) {
     loadingInstance.close();
     ElMessage.error(err.response?.data?.msg || "导入失败");
@@ -363,7 +448,10 @@ const validateInput = (row, index) => {
   row.score = numVal;
 };
 
-onMounted(fetchMyCourses);
+onMounted(async () => {
+  await fetchMyCourses();
+  await fetchDashboardTodos({ notify: true });
+});
 </script>
 
 <style scoped>
@@ -380,6 +468,24 @@ onMounted(fetchMyCourses);
   padding: 40px;
   text-align: center;
   color: #909399;
+}
+.todo-panel {
+  margin-bottom: 14px;
+  border: 1px solid #f7d8b2;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff8ef;
+}
+.todo-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.todo-item {
+  margin: 0;
+  color: #8c5a1d;
+  font-size: 13px;
 }
 .toolbar {
   display: flex;
@@ -406,5 +512,13 @@ onMounted(fetchMyCourses);
   margin-bottom: 10px;
   color: #909399;
   font-size: 13px;
+}
+
+:deep(.el-table__body tr.abnormal-score-row > td.el-table__cell) {
+  background-color: #fff6cc !important;
+}
+
+:deep(.el-table__body tr.abnormal-score-row:hover > td.el-table__cell) {
+  background-color: #ffefad !important;
 }
 </style>

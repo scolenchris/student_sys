@@ -69,6 +69,21 @@
       <el-table-column prop="grade_name" label="年级" width="100" />
       <el-table-column prop="subject_name" label="科目" width="100" />
       <el-table-column prop="full_score" label="满分" width="80" />
+      <el-table-column label="录分进度" min-width="220">
+        <template #default="scope">
+          <div v-if="scope.row.assigned_class_count > 0" class="progress-cell">
+            <div class="progress-text">
+              {{ scope.row.progress_text }} 班
+            </div>
+            <el-progress
+              :percentage="scope.row.completion_rate || 0"
+              :status="scope.row.is_fully_completed ? 'success' : ''"
+              :stroke-width="12"
+            />
+          </div>
+          <el-tag v-else type="info">未分配任课班级</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="录入状态" width="100">
         <template #default="scope">
           <el-switch
@@ -337,5 +352,16 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.progress-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.progress-text {
+  color: #606266;
+  font-size: 12px;
 }
 </style>

@@ -1,8 +1,10 @@
 from datetime import datetime
 
-from flask import jsonify, request
+from flask import g, jsonify, request
 
 from app.models import ClassInfo, ExamTask, Score, Student, Subject, db
+from app.services.audit_service import append_score_update_audit_log
+from app.services.progress_service import calc_exam_task_progress
 
 from . import admin_bp
 
@@ -23,8 +25,10 @@ def get_exam_tasks():
 
     tasks = query.order_by(ExamTask.create_time.desc()).all()
 
-    return jsonify(
-        [
+    result = []
+    for t in tasks:
+        progress = calc_exam_task_progress(t)
+        result.append(
             {
                 "id": t.id,
                 "name": t.name,
@@ -35,10 +39,15 @@ def get_exam_tasks():
                 "full_score": t.full_score,
                 "is_active": t.is_active,
                 "academic_year": t.academic_year,
+                "assigned_class_count": progress["assigned_class_count"],
+                "completed_class_count": progress["completed_class_count"],
+                "pending_class_count": progress["pending_class_count"],
+                "completion_rate": progress["completion_rate"],
+                "progress_text": progress["progress_text"],
+                "is_fully_completed": progress["is_fully_completed"],
             }
-            for t in tasks
-        ]
-    )
+        )
+    return jsonify(result)
 
 
 @admin_bp.route("/exam_tasks", methods=["POST"])
@@ -164,9 +173,15 @@ def get_admin_score_list():
 
 @admin_bp.route("/score_entry/save", methods=["POST"])
 def save_admin_scores():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     exam_task_id = data.get("exam_task_id")
     scores_data = data.get("scores")
+
+    if not exam_task_id:
+        return jsonify({"msg": "缺少考试任务ID"}), 400
+
+    if not isinstance(scores_data, list):
+        return jsonify({"msg": "成绩数据格式错误"}), 400
 
     task = ExamTask.query.get(exam_task_id)
     if not task:
@@ -175,12 +190,41 @@ def save_admin_scores():
     if not task.is_active:
         return jsonify({"msg": "该考试已锁定，无法修改"}), 403
 
+    student_ids = []
     for item in scores_data:
+        if not isinstance(item, dict):
+            return jsonify({"msg": "成绩数据格式错误"}), 400
+
+        student_id = item.get("student_id")
+        if not isinstance(student_id, int):
+            return jsonify({"msg": "存在非法学生ID"}), 400
+        student_ids.append(student_id)
+
+    if not student_ids:
+        return jsonify({"msg": "未提交可保存的成绩数据"}), 400
+
+    students = Student.query.filter(Student.id.in_(set(student_ids))).all()
+    student_map = {stu.id: stu for stu in students}
+    if len(student_map) != len(set(student_ids)):
+        return jsonify({"msg": "提交数据中包含不存在的学生"}), 400
+
+    missing_count = 0
+    invalid_count = 0
+    updated_count = 0
+    added_count = 0
+    actor_user = g.current_user
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
+    if "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+
+    for item in scores_data:
+        student_obj = student_map[item["student_id"]]
         raw_val = item["score"]
         final_score = 0.0
         final_remark = ""
 
         if raw_val is None or str(raw_val).strip() == "":
+            missing_count += 1
             continue
 
         if str(raw_val).strip() == "缺考":
@@ -189,7 +233,12 @@ def save_admin_scores():
         else:
             try:
                 final_score = float(raw_val)
-            except ValueError:
+            except (ValueError, TypeError):
+                invalid_count += 1
+                continue
+
+            if final_score < 0 or final_score > task.full_score:
+                invalid_count += 1
                 continue
 
         existing_score = Score.query.filter_by(
@@ -197,19 +246,53 @@ def save_admin_scores():
         ).first()
 
         if existing_score:
+            old_score = existing_score.score
+            old_remark = existing_score.remark
             existing_score.score = final_score
             existing_score.remark = final_remark
+            existing_score.class_id_snapshot = student_obj.class_id
+            if old_score != final_score or old_remark != final_remark:
+                append_score_update_audit_log(
+                    actor_user=actor_user,
+                    student_obj=student_obj,
+                    task_obj=task,
+                    old_score=old_score,
+                    old_remark=old_remark,
+                    new_score=final_score,
+                    new_remark=final_remark,
+                    source="admin_score_entry_save",
+                    class_id=student_obj.class_id,
+                    class_name=student_obj.current_class_rel.full_name
+                    if student_obj.current_class_rel
+                    else "",
+                    client_ip=client_ip,
+                )
+                updated_count += 1
         else:
             new_score = Score(
-                student_id=item["student_id"],
+                student_id=student_obj.id,
                 subject_id=task.subject_id,
                 exam_task_id=exam_task_id,
                 score=final_score,
                 term=task.name,
                 remark=final_remark,
+                class_id_snapshot=student_obj.class_id,
             )
             db.session.add(new_score)
+            added_count += 1
 
-    db.session.commit()
-    return jsonify({"msg": "成绩保存成功"})
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": f"数据库写入失败: {str(e)}"}), 500
 
+    return jsonify(
+        {
+            "msg": f"成绩保存成功（新增 {added_count}，更新 {updated_count}）",
+            "missing_count": missing_count,
+            "invalid_count": invalid_count,
+            "added_count": added_count,
+            "updated_count": updated_count,
+        }
+    )

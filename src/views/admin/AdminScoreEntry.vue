@@ -174,8 +174,13 @@ const saveAllScores = async () => {
         score: s.score,
       })),
     };
-    await saveAdminScores(payload);
-    ElMessage.success("保存成功");
+    const res = await saveAdminScores(payload);
+    const data = res?.data || {};
+    if ((data.missing_count || 0) > 0 || (data.invalid_count || 0) > 0) {
+      ElMessage.warning(data.msg || "部分成绩未保存，请检查输入");
+    } else {
+      ElMessage.success(data.msg || "保存成功");
+    }
   } catch (err) {
     ElMessage.error(err.response?.data?.msg || "保存失败");
   } finally {

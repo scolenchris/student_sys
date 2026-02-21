@@ -263,3 +263,35 @@ class ImportBatch(db.Model):
     rollback_note = db.Column(db.String(255), default="")
 
     create_time = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+
+class AuditLog(db.Model):
+    __tablename__ = "audit_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    create_time = db.Column(db.DateTime, default=datetime.now, nullable=False, index=True)
+
+    action_type = db.Column(db.String(32), nullable=False, default="score_update")
+    source = db.Column(db.String(32), nullable=False, default="")
+
+    actor_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    actor_username = db.Column(db.String(64), nullable=False, default="")
+    actor_real_name = db.Column(db.String(64), nullable=False, default="")
+    actor_role = db.Column(db.String(20), nullable=False, default="")
+
+    target_student_id = db.Column(db.Integer, db.ForeignKey("students.id"), nullable=True, index=True)
+    target_student_no = db.Column(db.String(20), nullable=False, default="")
+    target_student_name = db.Column(db.String(64), nullable=False, default="")
+
+    exam_task_id = db.Column(db.Integer, db.ForeignKey("exam_tasks.id"), nullable=True, index=True)
+    exam_task_name = db.Column(db.String(80), nullable=False, default="")
+    subject_name = db.Column(db.String(32), nullable=False, default="")
+
+    class_id_snapshot = db.Column(db.Integer, db.ForeignKey("classes.id"), nullable=True, index=True)
+    class_name_snapshot = db.Column(db.String(64), nullable=False, default="")
+
+    old_value = db.Column(db.String(32), nullable=False, default="")
+    new_value = db.Column(db.String(32), nullable=False, default="")
+
+    detail_text = db.Column(db.Text, nullable=False, default="")
+    client_ip = db.Column(db.String(64), nullable=False, default="")

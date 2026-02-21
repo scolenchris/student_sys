@@ -18,6 +18,7 @@ api.interceptors.request.use((config) => {
 
 // 教师任教课程
 export const getMyCourses = () => api.get("/my_courses");
+export const getDashboardTodos = () => api.get("/dashboard_todos");
 
 // 成绩列表
 export const getScoreList = (params) => api.get("/score_list", { params });

@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, send_file, g
 import pandas as pd
 import io
 from urllib.parse import quote
+from sqlalchemy import distinct, func, or_
 
 from app.auth_utils import require_auth
 from app.models import (
@@ -14,6 +15,8 @@ from app.models import (
     Score,
     ExamTask,
 )
+from app.services.audit_service import append_score_update_audit_log
+from app.services.progress_service import build_class_name, calc_class_record_progress
 
 teacher_bp = Blueprint("teacher", __name__)
 
@@ -70,6 +73,25 @@ def _teacher_can_operate_task_class(teacher_id, class_id, task):
     return bool(assignment)
 
 
+def _count_abnormal_scores(exam_task_id, student_ids, pass_line):
+    if not student_ids:
+        return 0
+
+    abnormal_count = (
+        db.session.query(func.count(distinct(Score.student_id)))
+        .filter(Score.exam_task_id == exam_task_id, Score.student_id.in_(student_ids))
+        .filter(
+            or_(
+                Score.remark == "缺考",
+                Score.score < pass_line,
+            )
+        )
+        .scalar()
+        or 0
+    )
+    return abnormal_count
+
+
 # --- 1. 获取当前老师的任教课程 ---
 @teacher_bp.route("/my_courses", methods=["GET"])
 @teacher_bp.route("/my_courses/<int:user_id>", methods=["GET"])
@@ -124,6 +146,101 @@ def get_my_courses(user_id=None):
             )
 
     return jsonify(valid_courses)
+
+
+# --- 1.1 教师首页待办提醒 ---
+@teacher_bp.route("/dashboard_todos", methods=["GET"])
+def get_dashboard_todos():
+    teacher, err = _get_current_teacher()
+    if err:
+        return err
+
+    assignments = (
+        db.session.query(
+            CourseAssignment.class_id,
+            CourseAssignment.subject_id,
+            CourseAssignment.academic_year,
+            ClassInfo.entry_year,
+            ClassInfo.class_num,
+            Subject.name.label("subject_name"),
+        )
+        .join(ClassInfo, CourseAssignment.class_id == ClassInfo.id)
+        .join(Subject, CourseAssignment.subject_id == Subject.id)
+        .filter(CourseAssignment.teacher_id == teacher.id)
+        .all()
+    )
+
+    pending_items = []
+    abnormal_items = []
+
+    for assignment in assignments:
+        tasks = (
+            ExamTask.query.filter_by(
+                entry_year=assignment.entry_year,
+                subject_id=assignment.subject_id,
+                academic_year=assignment.academic_year,
+                is_active=True,
+            )
+            .order_by(ExamTask.create_time.desc())
+            .all()
+        )
+
+        if not tasks:
+            continue
+
+        class_name = build_class_name(assignment.entry_year, assignment.class_num)
+
+        for task in tasks:
+            class_progress = calc_class_record_progress(task.id, assignment.class_id)
+
+            if class_progress["recorded_count"] < class_progress["total_students"]:
+                pending_items.append(
+                    {
+                        "task_id": task.id,
+                        "task_name": task.name,
+                        "subject_name": assignment.subject_name,
+                        "class_id": assignment.class_id,
+                        "class_name": class_name,
+                        "recorded_count": class_progress["recorded_count"],
+                        "total_students": class_progress["total_students"],
+                        "msg": (
+                            f"您有 [{task.name} - {assignment.subject_name}] 的成绩尚未录入，"
+                            f"当前进度 {class_progress['recorded_count']}/{class_progress['total_students']}。"
+                        ),
+                    }
+                )
+
+            pass_line = task.full_score * 0.6
+            abnormal_count = _count_abnormal_scores(
+                task.id,
+                class_progress["student_ids"],
+                pass_line,
+            )
+
+            if abnormal_count > 0:
+                abnormal_items.append(
+                    {
+                        "task_id": task.id,
+                        "task_name": task.name,
+                        "subject_name": assignment.subject_name,
+                        "class_id": assignment.class_id,
+                        "class_name": class_name,
+                        "abnormal_count": abnormal_count,
+                        "pass_line": round(pass_line, 1),
+                        "msg": (
+                            f"您带的 {class_name} 在 [{task.name} - {assignment.subject_name}]"
+                            f" 有 {abnormal_count} 名学生成绩异常（低于及格线或者误登记缺考）。"
+                        ),
+                    }
+                )
+
+    return jsonify(
+        {
+            "pending_items": pending_items,
+            "abnormal_items": abnormal_items,
+            "total_todos": len(pending_items) + len(abnormal_items),
+        }
+    )
 
 
 # --- 2. 获取打分列表（学生名单 + 现有分数） ---
@@ -240,6 +357,10 @@ def save_scores():
     invalid_count = 0
     updated_count = 0
     added_count = 0
+    actor_user = g.current_user
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
+    if "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
 
     for item in scores_data:
         student_obj = student_map[item["student_id"]]
@@ -278,10 +399,32 @@ def save_scores():
         ).first()
 
         if existing_score:
+            old_score = existing_score.score
+            old_remark = existing_score.remark
+
             existing_score.score = final_score
             existing_score.remark = final_remark
             existing_score.class_id_snapshot = student_obj.class_id
-            updated_count += 1
+
+            if old_score != final_score or old_remark != final_remark:
+                append_score_update_audit_log(
+                    actor_user=actor_user,
+                    student_obj=student_obj,
+                    task_obj=task,
+                    old_score=old_score,
+                    old_remark=old_remark,
+                    new_score=final_score,
+                    new_remark=final_remark,
+                    source="teacher_save_scores",
+                    class_id=student_obj.class_id,
+                    class_name=(
+                        student_obj.current_class_rel.full_name
+                        if student_obj.current_class_rel
+                        else ""
+                    ),
+                    client_ip=client_ip,
+                )
+                updated_count += 1
         else:
             new_score = Score(
                 student_id=student_obj.id,
@@ -502,6 +645,10 @@ def import_scores():
         )
 
     logs = {"success": 0, "updated": 0, "errors": []}
+    actor_user = g.current_user
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
+    if "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
 
     all_subjects = Subject.query.all()
     all_subject_names = set(s.name for s in all_subjects)
@@ -620,9 +767,24 @@ def import_scores():
 
         if existing_score:
             if existing_score.score != score_val or existing_score.remark != remark_val:
+                old_score = existing_score.score
+                old_remark = existing_score.remark
                 existing_score.score = score_val
                 existing_score.remark = remark_val
                 existing_score.class_id_snapshot = student_obj.class_id
+                append_score_update_audit_log(
+                    actor_user=actor_user,
+                    student_obj=student_obj,
+                    task_obj=task,
+                    old_score=old_score,
+                    old_remark=old_remark,
+                    new_score=score_val,
+                    new_remark=remark_val,
+                    source="teacher_import_scores",
+                    class_id=student_obj.class_id,
+                    class_name=expected_class_name,
+                    client_ip=client_ip,
+                )
                 logs["updated"] += 1
         else:
             new_score = Score(

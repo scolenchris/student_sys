@@ -107,6 +107,7 @@ const menuGroups = [
       { index: "/admin/approval", label: "用户审核" },
       { index: "/admin/settings", label: "系统设置" },
       { index: "/admin/import-history", label: "导入记录与回退" },
+      { index: "/admin/audit-logs", label: "敏感操作审计日志" },
     ],
   },
   {

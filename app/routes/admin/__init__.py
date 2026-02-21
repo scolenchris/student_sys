@@ -10,5 +10,13 @@ def _admin_auth_guard():
     return require_auth(required_roles={"admin"})
 
 
-from . import account, course_mgmt, exam_mgmt, import_api, stats_api, student_mgmt, teacher_mgmt  # noqa: E402,F401
-
+from . import (
+    account,
+    audit_api,
+    course_mgmt,
+    exam_mgmt,
+    import_api,
+    stats_api,
+    student_mgmt,
+    teacher_mgmt,
+)  # noqa: E402,F401

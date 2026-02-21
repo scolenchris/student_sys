@@ -72,6 +72,10 @@ const routes = [
         component: () => import("../views/admin/ImportHistory.vue"),
       },
       {
+        path: "audit-logs",
+        component: () => import("../views/admin/AuditLog.vue"),
+      },
+      {
         path: "score-entry",
         component: () => import("../views/admin/AdminScoreEntry.vue"),
       },
