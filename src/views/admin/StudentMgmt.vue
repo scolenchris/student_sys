@@ -18,6 +18,21 @@
             :value="c.id"
           />
         </el-select>
+        <el-input
+          v-model="keyword"
+          placeholder="按姓名/学号搜索"
+          clearable
+          style="width: 220px"
+          @keyup.enter="handleKeywordSearch"
+          @clear="handleKeywordSearch"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-button type="primary" plain @click="handleKeywordSearch">
+          搜索
+        </el-button>
         <el-button type="warning" plain @click="handleExport">
           <el-icon style="margin-right: 5px"><Download /></el-icon>
           下载学生名单模板
@@ -233,7 +248,7 @@ import {
   deleteStudent,
 } from "../../api/admin";
 import { ElMessage } from "element-plus";
-import { Document, Upload, Download } from "@element-plus/icons-vue";
+import { Document, Upload, Download, Search } from "@element-plus/icons-vue";
 
 const formatClassName = (c) =>
   `${String(c.entry_year).slice(-2)}级(${String(c.class_num).padStart(
@@ -246,6 +261,7 @@ const getStatusType = (s) =>
 const studentData = ref([]);
 const classes = ref([]);
 const filterClassId = ref(null);
+const keyword = ref("");
 const total = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(20);
@@ -335,6 +351,7 @@ const fetchStudents = async () => {
       page: currentPage.value,
       page_size: pageSize.value,
       class_id: filterClassId.value,
+      keyword: keyword.value,
     });
     studentData.value = res.data.data;
     total.value = res.data.total;
@@ -355,6 +372,11 @@ const handlePageSizeChange = (size) => {
 };
 
 const handleFilterChange = () => {
+  currentPage.value = 1;
+  fetchStudents();
+};
+
+const handleKeywordSearch = () => {
   currentPage.value = 1;
   fetchStudents();
 };

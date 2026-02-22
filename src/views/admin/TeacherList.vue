@@ -36,6 +36,31 @@
               <el-option label="全部" value="全部" />
             </el-select>
           </div>
+
+          <div class="filter-item">
+            <span class="label">关键词：</span>
+            <el-input
+              v-model="keyword"
+              placeholder="姓名/工号"
+              clearable
+              style="width: 180px"
+              @keyup.enter="handleKeywordSearch"
+              @clear="handleKeywordSearch"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+            <el-button
+              type="primary"
+              plain
+              size="small"
+              style="margin-left: 8px"
+              @click="handleKeywordSearch"
+            >
+              搜索
+            </el-button>
+          </div>
         </div>
 
         <div style="display: flex; gap: 10px">
@@ -346,7 +371,7 @@ import {
   exportTeachers,
 } from "../../api/admin";
 import { ElMessage } from "element-plus";
-import { Delete, Download, Upload } from "@element-plus/icons-vue";
+import { Delete, Download, Upload, Search } from "@element-plus/icons-vue";
 
 // 学年按 9 月切换。
 const now = new Date();
@@ -356,6 +381,7 @@ const defaultAcademicYear =
 
 const currentAcademicYear = ref(defaultAcademicYear);
 const filterStatus = ref("在职");
+const keyword = ref("");
 
 const academicYearOptions = computed(() => {
   const years = [];
@@ -404,6 +430,7 @@ const fetchData = async () => {
     const res = await getTeachers({
       academic_year: currentAcademicYear.value,
       status: filterStatus.value,
+      keyword: keyword.value,
       paged: 1,
       page: page.value,
       page_size: pageSize.value,
@@ -425,6 +452,11 @@ const handlePageChange = () => {
 };
 
 const handlePageSizeChange = () => {
+  page.value = 1;
+  fetchData();
+};
+
+const handleKeywordSearch = () => {
   page.value = 1;
   fetchData();
 };

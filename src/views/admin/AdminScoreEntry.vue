@@ -54,7 +54,19 @@
           >
         </div>
 
-        <div>
+        <div style="display: flex; align-items: center">
+          <el-input
+            v-model="keyword"
+            placeholder="按姓名/学号搜索"
+            clearable
+            style="width: 220px; margin-right: 10px"
+            @input="handleKeywordInput"
+            @clear="handleKeywordInput"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
           <el-button
             type="primary"
             size="default"
@@ -95,7 +107,7 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { ElMessage } from "element-plus";
-import { EditPen, Select, InfoFilled } from "@element-plus/icons-vue";
+import { EditPen, Select, InfoFilled, Search } from "@element-plus/icons-vue";
 import {
   getClasses,
   getAdminClassExams,
@@ -105,7 +117,8 @@ import {
 
 const classList = ref([]);
 const examList = ref([]);
-const students = ref([]);
+const studentsAll = ref([]);
+const keyword = ref("");
 
 const selectedClassId = ref(null);
 const selectedExamId = ref(null);
@@ -116,6 +129,16 @@ const scoreInputRefs = ref({});
 
 const currentExamInfo = computed(() => {
   return examList.value.find((e) => e.id === selectedExamId.value);
+});
+
+const students = computed(() => {
+  const kw = keyword.value.trim();
+  if (!kw) return studentsAll.value;
+  return studentsAll.value.filter(
+    (item) =>
+      String(item.name || "").includes(kw) ||
+      String(item.student_no || "").includes(kw),
+  );
 });
 
 onMounted(async () => {
@@ -129,7 +152,8 @@ onMounted(async () => {
 
 const handleClassChange = async (val) => {
   selectedExamId.value = null;
-  students.value = [];
+  studentsAll.value = [];
+  keyword.value = "";
   examList.value = [];
 
   if (!val) return;
@@ -156,7 +180,7 @@ const handleExamChange = async (val) => {
       class_id: selectedClassId.value,
       exam_task_id: val,
     });
-    students.value = res.data;
+    studentsAll.value = res.data || [];
   } catch (err) {
     ElMessage.error("加载名单失败");
   } finally {
@@ -169,7 +193,7 @@ const saveAllScores = async () => {
   try {
     const payload = {
       exam_task_id: selectedExamId.value,
-      scores: students.value.map((s) => ({
+      scores: studentsAll.value.map((s) => ({
         student_id: s.student_id,
         score: s.score,
       })),
@@ -239,6 +263,10 @@ const validateInput = (row, index) => {
 
   // 归一化数值格式，例如 "090" -> 90。
   row.score = numVal;
+};
+
+const handleKeywordInput = () => {
+  scoreInputRefs.value = {};
 };
 </script>
 

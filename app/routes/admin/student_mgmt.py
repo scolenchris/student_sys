@@ -1,7 +1,7 @@
 from urllib.parse import quote
 
 from flask import jsonify, request, send_file
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.models import (
     ClassInfo,
@@ -113,6 +113,7 @@ def get_students():
     if page_size is None:
         page_size = request.args.get("limit", default=20, type=int) or 20
     class_id = request.args.get("class_id", type=int)
+    keyword = (request.args.get("keyword") or "").strip()
 
     page = max(page, 1)
     page_size = min(max(page_size, 1), 100)
@@ -120,6 +121,11 @@ def get_students():
     query = Student.query
     if class_id:
         query = query.filter_by(class_id=class_id)
+    if keyword:
+        like_pattern = f"%{keyword}%"
+        query = query.filter(
+            or_(Student.name.like(like_pattern), Student.student_id.like(like_pattern))
+        )
 
     pagination = query.order_by(Student.student_id.asc()).paginate(
         page=page, per_page=page_size, error_out=False

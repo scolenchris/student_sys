@@ -91,6 +91,17 @@
         </el-select>
       </el-form-item>
 
+      <el-form-item label="关键词">
+        <el-input
+          v-model="query.keyword"
+          placeholder="姓名/学号"
+          clearable
+          style="width: 170px"
+          @keyup.enter="handleSearch(true)"
+          @clear="handleSearch(true)"
+        />
+      </el-form-item>
+
       <el-form-item>
         <el-button type="primary" @click="handleSearch(true)" :loading="loading">
           <el-icon><Search /></el-icon> 生成变化分析
@@ -265,6 +276,7 @@ const query = reactive({
   class_ids: [],
   exam_names: [],
   subject_ids: [],
+  keyword: "",
   page: 1,
   page_size: 20,
 });
@@ -336,6 +348,7 @@ const handleSearch = async (resetPage = false) => {
       class_ids: query.class_ids,
       exam_names: query.exam_names,
       subject_ids: query.subject_ids,
+      keyword: query.keyword,
       only_changed: onlyChanged.value,
       paged: true,
       page: query.page,
@@ -408,6 +421,7 @@ const exportExcel = async () => {
       class_ids: query.class_ids,
       exam_names: query.exam_names,
       subject_ids: query.subject_ids,
+      keyword: query.keyword,
       only_changed: onlyChanged.value,
     });
 

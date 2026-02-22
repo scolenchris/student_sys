@@ -72,6 +72,19 @@
         </div>
 
         <div class="action-buttons">
+          <el-input
+            v-model="keyword"
+            placeholder="按姓名/学号搜索"
+            clearable
+            style="width: 220px"
+            @input="handleKeywordInput"
+            @clear="handleKeywordInput"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+
           <el-button type="success" plain @click="handleExport">
             <el-icon><Download /></el-icon> 导出现有成绩/模板
           </el-button>
@@ -183,7 +196,7 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElNotification } from "element-plus";
-import { Check, Download, Upload } from "@element-plus/icons-vue";
+import { Check, Download, Upload, Search } from "@element-plus/icons-vue";
 import {
   getDashboardTodos,
   getMyCourses,
@@ -199,7 +212,8 @@ const selectedKey = ref(null);
 const selectedCourseInfo = ref(null);
 const examList = ref([]);
 const selectedExamId = ref(null);
-const students = ref([]);
+const studentsAll = ref([]);
+const keyword = ref("");
 const loading = ref(false);
 const saving = ref(false);
 
@@ -216,6 +230,16 @@ const scoreInputRefs = ref({});
 
 const currentExamInfo = computed(() => {
   return examList.value.find((e) => e.id === selectedExamId.value);
+});
+
+const students = computed(() => {
+  const kw = keyword.value.trim();
+  if (!kw) return studentsAll.value;
+  return studentsAll.value.filter(
+    (item) =>
+      String(item.name || "").includes(kw) ||
+      String(item.student_no || "").includes(kw),
+  );
 });
 
 const isAbnormalScore = (rawScore) => {
@@ -293,7 +317,8 @@ const fetchDashboardTodos = async ({ notify = false } = {}) => {
 
 const handleCourseChange = async (assignmentId) => {
   selectedExamId.value = null;
-  students.value = [];
+  studentsAll.value = [];
+  keyword.value = "";
   const info = myCourses.value.find(
     (item) => item.assignment_id === assignmentId,
   );
@@ -322,7 +347,7 @@ const handleExamChange = async (examId) => {
       class_id: selectedCourseInfo.value.class_id,
       exam_task_id: examId,
     });
-    students.value = res.data;
+    studentsAll.value = res.data || [];
   } catch (err) {
     ElMessage.error("获取名单失败");
   } finally {
@@ -335,7 +360,7 @@ const saveAllScores = async () => {
   try {
     const res = await saveScores({
       exam_task_id: selectedExamId.value,
-      scores: students.value.map((s) => ({
+      scores: studentsAll.value.map((s) => ({
         student_id: s.student_id,
         score: s.score,
       })),
@@ -446,6 +471,10 @@ const validateInput = (row, index) => {
 
   // 归一化数值格式，例如 "090" -> 90。
   row.score = numVal;
+};
+
+const handleKeywordInput = () => {
+  scoreInputRefs.value = {};
 };
 
 onMounted(async () => {

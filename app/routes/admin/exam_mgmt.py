@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from flask import g, jsonify, request
+from sqlalchemy import or_
 
 from app.models import ClassInfo, ExamTask, Score, Student, Subject, db
 from app.services.audit_service import append_score_update_audit_log
@@ -170,15 +171,19 @@ def get_class_active_exams():
 def get_admin_score_list():
     class_id = request.args.get("class_id")
     exam_task_id = request.args.get("exam_task_id")
+    keyword = (request.args.get("keyword") or "").strip()
 
     if not exam_task_id or not class_id:
         return jsonify([])
 
-    students = (
-        Student.query.filter_by(class_id=class_id, status="在读")
-        .order_by(Student.student_id.asc())
-        .all()
-    )
+    student_query = Student.query.filter_by(class_id=class_id, status="在读")
+    if keyword:
+        like_pattern = f"%{keyword}%"
+        student_query = student_query.filter(
+            or_(Student.name.like(like_pattern), Student.student_id.like(like_pattern))
+        )
+
+    students = student_query.order_by(Student.student_id.asc()).all()
 
     student_ids = [s.id for s in students]
     score_map = {}

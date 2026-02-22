@@ -277,6 +277,7 @@ def get_dashboard_todos():
 def get_score_list():
     class_id = request.args.get("class_id", type=int)
     exam_task_id = request.args.get("exam_task_id", type=int)
+    keyword = (request.args.get("keyword") or "").strip()
 
     if not class_id or not exam_task_id:
         return jsonify({"msg": "参数缺失"}), 400
@@ -292,11 +293,14 @@ def get_score_list():
     if not _teacher_can_operate_task_class(teacher.id, class_id, task):
         return jsonify({"msg": "无权访问该班级的考试成绩"}), 403
 
-    students = (
-        Student.query.filter_by(class_id=class_id, status="在读")
-        .order_by(Student.student_id)
-        .all()
-    )
+    student_query = Student.query.filter_by(class_id=class_id, status="在读")
+    if keyword:
+        like_pattern = f"%{keyword}%"
+        student_query = student_query.filter(
+            or_(Student.name.like(like_pattern), Student.student_id.like(like_pattern))
+        )
+
+    students = student_query.order_by(Student.student_id).all()
 
     student_ids = [s.id for s in students]
     score_map = {}

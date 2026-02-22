@@ -62,6 +62,15 @@
         </el-select>
       </el-form-item>
 
+      <el-form-item label="关键词">
+        <el-input
+          v-model="query.keyword"
+          placeholder="姓名搜索"
+          clearable
+          style="width: 160px"
+        />
+      </el-form-item>
+
       <el-form-item>
         <el-button type="primary" @click="fetchData" :loading="loading">
           <el-icon><Search /></el-icon> 生成教师统计
@@ -97,7 +106,7 @@
     </el-form>
 
     <el-table
-      :data="tableData"
+      :data="displayTableData"
       border
       stripe
       v-loading="loading"
@@ -186,8 +195,15 @@ const query = reactive({
   academic_year: currentYear,
   entry_year: null,
   exam_name: "",
+  keyword: "",
   threshold_excellent: 85,
   threshold_pass: 60,
+});
+
+const displayTableData = computed(() => {
+  const kw = query.keyword.trim();
+  if (!kw) return tableData.value;
+  return tableData.value.filter((item) => String(item.name || "").includes(kw));
 });
 
 const academicYearOptions = computed(() => {

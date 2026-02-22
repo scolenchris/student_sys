@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from flask import jsonify, request
+from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
 
 from app.models import (
@@ -25,6 +26,7 @@ def get_teachers():
 
     academic_year = request.args.get("academic_year", default_year, type=int)
     status_filter = request.args.get("status", "在职")
+    keyword = (request.args.get("keyword") or "").strip()
     paged = request.args.get("paged", default=0, type=int) == 1
     page = request.args.get("page", default=1, type=int) or 1
     page_size = request.args.get("page_size", type=int)
@@ -57,6 +59,11 @@ def get_teachers():
     )
     if status_filter != "全部":
         query = query.filter(Teacher.status == status_filter)
+    if keyword:
+        like_pattern = f"%{keyword}%"
+        query = query.filter(
+            or_(Teacher.name.like(like_pattern), User.username.like(like_pattern))
+        )
     query = query.order_by(Teacher.id.desc())
     if paged:
         total = query.count()

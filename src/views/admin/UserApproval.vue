@@ -1,13 +1,25 @@
 <template>
   <el-card>
     <template #header>
-      <h3>
-        <el-icon style="vertical-align: middle"><User /></el-icon>
-        用户审核与状态管理
-      </h3>
+      <div class="header-row">
+        <h3>
+          <el-icon style="vertical-align: middle"><User /></el-icon>
+          用户审核与状态管理
+        </h3>
+        <el-input
+          v-model="keyword"
+          clearable
+          placeholder="按姓名/工号搜索"
+          style="width: 240px"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+      </div>
     </template>
 
-    <el-table :data="pendingUsers" style="width: 100%" border stripe>
+    <el-table :data="filteredPendingUsers" style="width: 100%" border stripe>
       <el-table-column prop="username" label="用户名/工号" width="150" />
       <el-table-column prop="name" label="姓名" width="120" />
 
@@ -82,12 +94,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { getPendingUsers, approveUser, rejectUser } from "../../api/admin";
 import { ElMessage } from "element-plus";
-import { User } from "@element-plus/icons-vue";
+import { User, Search } from "@element-plus/icons-vue";
 
 const pendingUsers = ref([]);
+const keyword = ref("");
+
+const filteredPendingUsers = computed(() => {
+  const kw = keyword.value.trim();
+  if (!kw) return pendingUsers.value;
+  return pendingUsers.value.filter(
+    (item) =>
+      String(item.name || "").includes(kw) ||
+      String(item.username || "").includes(kw),
+  );
+});
 
 const fetchData = async () => {
   try {
@@ -120,3 +143,11 @@ const handleReject = async (id) => {
 
 onMounted(fetchData);
 </script>
+
+<style scoped>
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+</style>

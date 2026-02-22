@@ -133,6 +133,7 @@ def build_comprehensive_report(data):
     exam_name = data.get("exam_name")
     subject_ids = data.get("subject_ids", [])
     class_ids = data.get("class_ids", [])
+    keyword = str(data.get("keyword", "")).strip()
 
     if not entry_year or not exam_name or not subject_ids:
         return None, ("请选择完整的筛选条件（年级、考试、科目）", 400)
@@ -261,6 +262,14 @@ def build_comprehensive_report(data):
                 }
             )
 
+    if keyword:
+        final_output = [
+            item
+            for item in final_output
+            if keyword in str(item.get("name", ""))
+            or keyword in str(item.get("student_id", ""))
+        ]
+
     if paged:
         total = len(final_output)
         start = (page - 1) * page_size
@@ -285,6 +294,7 @@ def build_score_rank_trend_payload(data):
     class_ids_raw = data.get("class_ids", [])
     paged, page, page_size = _resolve_pagination(data)
     only_changed = _to_bool(data.get("only_changed", False))
+    keyword = str(data.get("keyword", "")).strip()
 
     try:
         entry_year = int(entry_year)
@@ -626,6 +636,14 @@ def build_score_rank_trend_payload(data):
             }
         )
 
+    if keyword:
+        rows = [
+            row
+            for row in rows
+            if keyword in str(row.get("name", ""))
+            or keyword in str(row.get("student_id", ""))
+        ]
+
     if only_changed:
         rows = [row for row in rows if row.get("has_change")]
 
@@ -764,6 +782,7 @@ def build_teacher_score_stats(data):
     entry_year = data.get("entry_year")
     academic_year = data.get("academic_year")
     exam_name = data.get("exam_name")
+    keyword = str(data.get("keyword", "")).strip()
 
     th_exc_rate = data.get("threshold_excellent", 85) / 100.0
     th_pass_rate = data.get("threshold_pass", 60) / 100.0
@@ -919,5 +938,10 @@ def build_teacher_score_stats(data):
         final_result.extend(teacher_rows)
         if teacher_rows or grade_exam_count > 0:
             final_result.append(total_row)
+
+    if keyword:
+        final_result = [
+            row for row in final_result if keyword in str(row.get("name", ""))
+        ]
 
     return final_result, None

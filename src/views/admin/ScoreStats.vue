@@ -116,6 +116,17 @@
         </el-select>
       </el-form-item>
 
+      <el-form-item label="关键词">
+        <el-input
+          v-model="query.keyword"
+          placeholder="姓名/学号"
+          clearable
+          style="width: 170px"
+          @keyup.enter="handleSearch(true)"
+          @clear="handleSearch(true)"
+        />
+      </el-form-item>
+
       <el-form-item>
         <el-button type="primary" @click="handleSearch(true)" :loading="loading"
           >生成综合统计</el-button
@@ -370,6 +381,7 @@ const query = reactive({
   exam_name: "",
   subject_ids: [],
   class_ids: [],
+  keyword: "",
   page: 1,
   page_size: 20,
 });
@@ -440,6 +452,7 @@ const handleSearch = async (resetPage = false) => {
       exam_name: query.exam_name,
       subject_ids: query.subject_ids,
       class_ids: query.class_ids,
+      keyword: query.keyword,
       paged: true,
       page: query.page,
       page_size: query.page_size,
@@ -480,6 +493,7 @@ const exportExcelReport = async () => {
       exam_name: query.exam_name,
       subject_ids: query.subject_ids,
       class_ids: query.class_ids,
+      keyword: query.keyword,
     });
 
     const blob = new Blob([res.data], {
