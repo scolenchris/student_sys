@@ -25,7 +25,24 @@ class Config:
     # 注意：SQLite 通常不需要 MySQL 的 pool_recycle 配置
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
+        # 写锁等待时间，降低并发写入场景下的 "database is locked" 触发概率
+        "connect_args": {
+            "timeout": 30,
+            "check_same_thread": False,
+        },
     }
+
+    # SQLite PRAGMA 开关（直接在代码中控制，适合打包 exe 使用）
+    # 可选: "conservative" / "performance"
+    SQLITE_MODE_PROFILE = "conservative"
+
+    if SQLITE_MODE_PROFILE == "performance":
+        SQLITE_JOURNAL_MODE = "WAL"
+        SQLITE_SYNCHRONOUS = "NORMAL"
+    else:
+        # 默认保守模式：更适合担心异常关机/断电场景
+        SQLITE_JOURNAL_MODE = "DELETE"
+        SQLITE_SYNCHRONOUS = "FULL"
 
     # JWT 或 Session 过期时间设置（可选）
     AUTH_TOKEN_EXPIRES_SECONDS = int(

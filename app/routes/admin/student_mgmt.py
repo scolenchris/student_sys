@@ -1,6 +1,7 @@
 from urllib.parse import quote
 
 from flask import jsonify, request, send_file
+from sqlalchemy import func
 
 from app.models import (
     ClassInfo,
@@ -20,6 +21,18 @@ def get_classes():
     classes = ClassInfo.query.order_by(
         ClassInfo.entry_year.desc(), ClassInfo.class_num.asc()
     ).all()
+
+    class_ids = [c.id for c in classes]
+    student_count_map = {}
+    if class_ids:
+        rows = (
+            db.session.query(Student.class_id, func.count(Student.id))
+            .filter(Student.class_id.in_(class_ids))
+            .group_by(Student.class_id)
+            .all()
+        )
+        student_count_map = {class_id: count for class_id, count in rows}
+
     return jsonify(
         [
             {
@@ -27,7 +40,7 @@ def get_classes():
                 "entry_year": c.entry_year,
                 "class_num": c.class_num,
                 "grade_name": c.grade_display,
-                "student_count": c.students.count(),
+                "student_count": student_count_map.get(c.id, 0),
             }
             for c in classes
         ]
@@ -211,4 +224,3 @@ def generate_certificate(student_id):
         as_attachment=True,
         download_name=quote(filename),
     )
-

@@ -61,12 +61,22 @@ if __name__ == "__main__":
     try:
         initialize_system()
 
+        cpu_count = os.cpu_count() or 2
+        default_threads = max(2, min(cpu_count, 4))
+        waitress_threads = int(os.environ.get("WAITRESS_THREADS", default_threads))
+
         print("系统启动中... 请访问 http://localhost:5173 进行调试")
+        print(f"Waitress 线程数: {waitress_threads}")
+        print(
+            "SQLite 模式: "
+            f"journal={app.config.get('SQLITE_JOURNAL_MODE')}, "
+            f"synchronous={app.config.get('SQLITE_SYNCHRONOUS')}"
+        )
         print("注意：如需关闭服务器，请直接关闭此窗口")
         print("=" * 60)
 
         # 使用 Waitress 作为生产/联调启动方式
-        serve(app, host="0.0.0.0", port=5173, threads=6)
+        serve(app, host="0.0.0.0", port=5173, threads=waitress_threads)
 
     except OSError as e:
         if e.winerror == 10048:

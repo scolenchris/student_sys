@@ -152,13 +152,24 @@ def get_admin_score_list():
     if not exam_task_id or not class_id:
         return jsonify([])
 
-    students = Student.query.filter_by(class_id=class_id, status="在读").all()
+    students = (
+        Student.query.filter_by(class_id=class_id, status="在读")
+        .order_by(Student.student_id.asc())
+        .all()
+    )
+
+    student_ids = [s.id for s in students]
+    score_map = {}
+    if student_ids:
+        scores = Score.query.filter(
+            Score.exam_task_id == exam_task_id,
+            Score.student_id.in_(student_ids),
+        ).all()
+        score_map = {score.student_id: score for score in scores}
 
     result = []
     for s in students:
-        score_record = Score.query.filter_by(
-            student_id=s.id, exam_task_id=exam_task_id
-        ).first()
+        score_record = score_map.get(s.id)
 
         display_val = None
         if score_record:

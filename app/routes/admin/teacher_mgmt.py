@@ -1,8 +1,10 @@
 from datetime import datetime
 
 from flask import jsonify, request
+from sqlalchemy.orm import selectinload
 
 from app.models import (
+    CourseAssignment,
     GradeLeaderAssignment,
     HeadTeacherAssignment,
     PrepGroupLeaderAssignment,
@@ -24,7 +26,28 @@ def get_teachers():
     academic_year = request.args.get("academic_year", default_year, type=int)
     status_filter = request.args.get("status", "在职")
 
-    query = db.session.query(Teacher, User).join(User, Teacher.user_id == User.id)
+    query = (
+        db.session.query(Teacher, User)
+        .join(User, Teacher.user_id == User.id)
+        .options(
+            selectinload(Teacher.head_teacher_assigns).selectinload(
+                HeadTeacherAssignment.class_info
+            ),
+            selectinload(Teacher.grade_leader_assigns),
+            selectinload(Teacher.subject_group_assigns).selectinload(
+                SubjectGroupLeaderAssignment.subject
+            ),
+            selectinload(Teacher.prep_group_assigns).selectinload(
+                PrepGroupLeaderAssignment.subject
+            ),
+            selectinload(Teacher.course_assignments).selectinload(
+                CourseAssignment.class_info
+            ),
+            selectinload(Teacher.course_assignments).selectinload(
+                CourseAssignment.subject
+            ),
+        )
+    )
     if status_filter != "全部":
         query = query.filter(Teacher.status == status_filter)
     teachers = query.all()
@@ -204,4 +227,3 @@ def reset_teacher_password(t_id):
     db.session.commit()
 
     return jsonify({"msg": f"教师 {teacher.name} 的密码已重置为 123456"})
-

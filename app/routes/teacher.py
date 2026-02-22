@@ -2,7 +2,8 @@ from flask import Blueprint, request, jsonify, send_file, g
 import pandas as pd
 import io
 from urllib.parse import quote
-from sqlalchemy import distinct, func, or_
+from sqlalchemy import distinct, func, or_, tuple_
+from collections import defaultdict
 
 from app.auth_utils import require_auth
 from app.models import (
@@ -120,21 +121,34 @@ def get_my_courses(user_id=None):
         .all()
     )
 
-    valid_courses = []
-
-    for a in assignments:
-        has_active_exam = (
-            db.session.query(ExamTask.id)
-            .filter_by(
-                entry_year=a.entry_year,
-                subject_id=a.subject_id,
-                academic_year=a.academic_year,
-                is_active=True,
+    active_keys = set()
+    assignment_keys = {
+        (a.entry_year, a.subject_id, a.academic_year)
+        for a in assignments
+    }
+    if assignment_keys:
+        rows = (
+            db.session.query(
+                ExamTask.entry_year,
+                ExamTask.subject_id,
+                ExamTask.academic_year,
             )
-            .first()
+            .filter(
+                tuple_(
+                    ExamTask.entry_year,
+                    ExamTask.subject_id,
+                    ExamTask.academic_year,
+                ).in_(assignment_keys),
+                ExamTask.is_active.is_(True),
+            )
+            .distinct()
+            .all()
         )
+        active_keys = {(r.entry_year, r.subject_id, r.academic_year) for r in rows}
 
-        if has_active_exam:
+    valid_courses = []
+    for a in assignments:
+        if (a.entry_year, a.subject_id, a.academic_year) in active_keys:
             valid_courses.append(
                 {
                     "assignment_id": a.id,
@@ -173,16 +187,31 @@ def get_dashboard_todos():
     pending_items = []
     abnormal_items = []
 
-    for assignment in assignments:
-        tasks = (
-            ExamTask.query.filter_by(
-                entry_year=assignment.entry_year,
-                subject_id=assignment.subject_id,
-                academic_year=assignment.academic_year,
-                is_active=True,
+    assignment_keys = {
+        (a.entry_year, a.subject_id, a.academic_year)
+        for a in assignments
+    }
+    task_map = defaultdict(list)
+    if assignment_keys:
+        all_tasks = (
+            ExamTask.query.filter(
+                tuple_(
+                    ExamTask.entry_year,
+                    ExamTask.subject_id,
+                    ExamTask.academic_year,
+                ).in_(assignment_keys),
+                ExamTask.is_active.is_(True),
             )
             .order_by(ExamTask.create_time.desc())
             .all()
+        )
+        for task in all_tasks:
+            key = (task.entry_year, task.subject_id, task.academic_year)
+            task_map[key].append(task)
+
+    for assignment in assignments:
+        tasks = task_map.get(
+            (assignment.entry_year, assignment.subject_id, assignment.academic_year), []
         )
 
         if not tasks:

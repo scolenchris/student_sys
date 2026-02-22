@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import path from "path";
 
+const debugBuild = process.env.DEBUG_BUILD === "1";
+
 export default defineConfig({
   plugins: [vue()],
   resolve: {
@@ -10,11 +12,18 @@ export default defineConfig({
     },
   },
   build: {
-    // 设置为 false 以禁用压缩混淆，代码将保持原样（包含空格、换行、变量名）
-    minify: false,
-
-    // 建议同时开启 sourcemap，方便在浏览器 DevTools 中直接定位源码位置
-    sourcemap: true,
+    // 默认生产构建开启压缩；如需排查线上问题，可用 DEBUG_BUILD=1 生成可读包
+    minify: debugBuild ? false : "esbuild",
+    sourcemap: debugBuild,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vue-vendor": ["vue", "vue-router", "pinia"],
+          "ui-vendor": ["element-plus", "@element-plus/icons-vue"],
+          "http-vendor": ["axios"],
+        },
+      },
+    },
   },
   server: {
     host: "0.0.0.0",
