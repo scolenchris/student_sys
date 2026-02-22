@@ -8,6 +8,14 @@ from . import admin_bp
 @admin_bp.route("/assignments", methods=["GET"])
 def get_assignments():
     academic_year = request.args.get("academic_year", type=int)
+    paged = request.args.get("paged", default=0, type=int) == 1
+    page = request.args.get("page", default=1, type=int) or 1
+    page_size = request.args.get("page_size", type=int)
+    if page_size is None:
+        page_size = request.args.get("limit", default=20, type=int) or 20
+
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
 
     query = (
         db.session.query(
@@ -25,19 +33,33 @@ def get_assignments():
     if academic_year:
         query = query.filter(CourseAssignment.academic_year == academic_year)
 
-    results = query.all()
+    query = query.order_by(CourseAssignment.id.desc())
+    if paged:
+        total = query.count()
+        results = query.offset((page - 1) * page_size).limit(page_size).all()
+    else:
+        results = query.all()
 
-    return jsonify(
-        [
+    items = [
+        {
+            "id": r.id,
+            "teacher_name": r.teacher_name,
+            "grade_class": f"{r.entry_year}级({r.class_num})班",
+            "subject_name": r.subject_name,
+        }
+        for r in results
+    ]
+
+    if paged:
+        return jsonify(
             {
-                "id": r.id,
-                "teacher_name": r.teacher_name,
-                "grade_class": f"{r.entry_year}级({r.class_num})班",
-                "subject_name": r.subject_name,
+                "items": items,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
             }
-            for r in results
-        ]
-    )
+        )
+    return jsonify(items)
 
 
 @admin_bp.route("/assignments", methods=["POST"])
@@ -75,4 +97,3 @@ def delete_assignment(a_id):
 def get_all_subjects():
     subs = Subject.query.order_by(Subject.id.asc()).all()
     return jsonify([{"id": s.id, "name": s.name} for s in subs])
-

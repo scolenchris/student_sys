@@ -8,7 +8,7 @@
           v-model="filterClassId"
           placeholder="按班级筛选"
           clearable
-          @change="fetchStudents"
+          @change="handleFilterChange"
           style="width: 200px"
         >
           <el-option
@@ -208,10 +208,13 @@
     </el-dialog>
 
     <el-pagination
-      layout="prev, pager, next"
+      layout="total, sizes, prev, pager, next"
       :total="total"
+      :page-sizes="[10, 20, 50, 100]"
       @current-change="handlePageChange"
+      @size-change="handlePageSizeChange"
       v-model:current-page="currentPage"
+      v-model:page-size="pageSize"
       style="margin-top: 20px; text-align: right"
     />
   </el-card>
@@ -245,6 +248,7 @@ const classes = ref([]);
 const filterClassId = ref(null);
 const total = ref(0);
 const currentPage = ref(1);
+const pageSize = ref(20);
 const loading = ref(false);
 const dialogVisible = ref(false);
 const dialogType = ref("add");
@@ -329,6 +333,7 @@ const fetchStudents = async () => {
   try {
     const res = await getStudents({
       page: currentPage.value,
+      page_size: pageSize.value,
       class_id: filterClassId.value,
     });
     studentData.value = res.data.data;
@@ -340,6 +345,17 @@ const fetchStudents = async () => {
 
 const handlePageChange = (page) => {
   currentPage.value = page;
+  fetchStudents();
+};
+
+const handlePageSizeChange = (size) => {
+  pageSize.value = size;
+  currentPage.value = 1;
+  fetchStudents();
+};
+
+const handleFilterChange = () => {
+  currentPage.value = 1;
   fetchStudents();
 };
 

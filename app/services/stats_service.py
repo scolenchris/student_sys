@@ -28,6 +28,35 @@ SUBJECT_PRIORITY = [
 ]
 
 
+def _to_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return False
+
+
+def _resolve_pagination(data):
+    paged = _to_bool(data.get("paged", False))
+    page = data.get("page", 1)
+    page_size = data.get("page_size", 20)
+
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(page_size)
+    except (TypeError, ValueError):
+        page_size = 20
+
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+    return paged, page, page_size
+
+
 def build_class_report(class_id, term):
     if not class_id or not term:
         return {"subjects": [], "report": [], "subject_averages": {}}
@@ -107,6 +136,7 @@ def build_comprehensive_report(data):
 
     if not entry_year or not exam_name or not subject_ids:
         return None, ("请选择完整的筛选条件（年级、考试、科目）", 400)
+    paged, page, page_size = _resolve_pagination(data)
 
     all_classes = ClassInfo.query.filter_by(entry_year=entry_year).all()
     class_map = {c.id: c.full_name for c in all_classes}
@@ -119,6 +149,15 @@ def build_comprehensive_report(data):
     ).all()
 
     if not tasks:
+        if paged:
+            return {
+                "items": [],
+                "data": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "subjects": [],
+            }, None
         return {"data": [], "subjects": []}, None
 
     task_map = {t.id: t.subject_id for t in tasks}
@@ -222,6 +261,20 @@ def build_comprehensive_report(data):
                 }
             )
 
+    if paged:
+        total = len(final_output)
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_items = final_output[start:end]
+        return {
+            "items": page_items,
+            "data": page_items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "subjects": ordered_subject_names,
+        }, None
+
     return {"data": final_output, "subjects": ordered_subject_names}, None
 
 
@@ -230,6 +283,8 @@ def build_score_rank_trend_payload(data):
     exam_names_raw = data.get("exam_names", [])
     subject_ids_raw = data.get("subject_ids", [])
     class_ids_raw = data.get("class_ids", [])
+    paged, page, page_size = _resolve_pagination(data)
+    only_changed = _to_bool(data.get("only_changed", False))
 
     try:
         entry_year = int(entry_year)
@@ -280,7 +335,10 @@ def build_score_rank_trend_payload(data):
         .all()
     )
     if not grade_classes:
-        return {"subjects": [], "exams": [], "rows": [], "warnings": []}, None
+        payload = {"subjects": [], "exams": [], "rows": [], "warnings": []}
+        if paged:
+            payload.update({"total": 0, "page": page, "page_size": page_size})
+        return payload, None
 
     all_grade_class_ids = [c.id for c in grade_classes]
     class_name_map = {c.id: c.full_name for c in grade_classes}
@@ -292,15 +350,15 @@ def build_score_rank_trend_payload(data):
         target_class_ids = set(all_grade_class_ids)
 
     if not target_class_ids:
-        return (
-            {
-                "subjects": [],
-                "exams": [],
-                "rows": [],
-                "warnings": ["筛选班级不属于当前年级，未返回数据。"],
-            },
-            None,
-        )
+        payload = {
+            "subjects": [],
+            "exams": [],
+            "rows": [],
+            "warnings": ["筛选班级不属于当前年级，未返回数据。"],
+        }
+        if paged:
+            payload.update({"total": 0, "page": page, "page_size": page_size})
+        return payload, None
 
     students = (
         Student.query.filter(
@@ -310,7 +368,10 @@ def build_score_rank_trend_payload(data):
         .all()
     )
     if not students:
-        return {"subjects": [], "exams": [], "rows": [], "warnings": []}, None
+        payload = {"subjects": [], "exams": [], "rows": [], "warnings": []}
+        if paged:
+            payload.update({"total": 0, "page": page, "page_size": page_size})
+        return payload, None
 
     student_ids = [s.id for s in students]
 
@@ -321,7 +382,10 @@ def build_score_rank_trend_payload(data):
     subject_name_by_id = {sid: subject_obj_map[sid].name for sid in ordered_subject_ids}
 
     if not ordered_subject_ids:
-        return {"subjects": [], "exams": [], "rows": [], "warnings": []}, None
+        payload = {"subjects": [], "exams": [], "rows": [], "warnings": []}
+        if paged:
+            payload.update({"total": 0, "page": page, "page_size": page_size})
+        return payload, None
 
     tie_break_subjects = [n for n in SUBJECT_PRIORITY if n in ordered_subject_names]
     tie_break_subjects.extend(
@@ -377,12 +441,15 @@ def build_score_rank_trend_payload(data):
         )
 
     if not exams:
-        return {
+        payload = {
             "subjects": ordered_subject_names,
             "exams": [],
             "rows": [],
             "warnings": warnings,
-        }, None
+        }
+        if paged:
+            payload.update({"total": 0, "page": page, "page_size": page_size})
+        return payload, None
 
     all_task_ids = list(task_info_by_id.keys())
     score_map = {}
@@ -559,12 +626,25 @@ def build_score_rank_trend_payload(data):
             }
         )
 
-    return {
+    if only_changed:
+        rows = [row for row in rows if row.get("has_change")]
+
+    payload = {
         "subjects": ordered_subject_names,
         "exams": exams,
         "rows": rows,
         "warnings": warnings,
-    }, None
+    }
+    if paged:
+        total = len(rows)
+        start = (page - 1) * page_size
+        end = start + page_size
+        payload["rows"] = rows[start:end]
+        payload["total"] = total
+        payload["page"] = page
+        payload["page_size"] = page_size
+
+    return payload, None
 
 
 def build_class_score_stats(data):
@@ -841,4 +921,3 @@ def build_teacher_score_stats(data):
             final_result.append(total_row)
 
     return final_result, None
-

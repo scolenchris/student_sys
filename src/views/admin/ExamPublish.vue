@@ -12,7 +12,7 @@
         v-model="filterAcademicYear"
         placeholder="筛选学年"
         style="width: 140px"
-        @change="fetchTasks"
+        @change="handleFilterChange"
       >
         <el-option
           v-for="y in academicYearOptions"
@@ -27,7 +27,7 @@
         placeholder="筛选年级"
         clearable
         style="width: 140px"
-        @change="fetchTasks"
+        @change="handleFilterChange"
       >
         <el-option
           v-for="y in gradeOptions"
@@ -42,7 +42,7 @@
         placeholder="筛选科目"
         clearable
         style="width: 140px"
-        @change="fetchTasks"
+        @change="handleFilterChange"
       >
         <el-option
           v-for="s in subjects"
@@ -111,6 +111,18 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="pager-wrap">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        @size-change="handlePageSizeChange"
+        @current-change="handlePageChange"
+      />
+    </div>
 
     <el-dialog v-model="dialogVisible" title="发布考试任务" width="500px">
       <el-form :model="form" label-width="100px">
@@ -207,6 +219,9 @@ const tasks = ref([]);
 const subjects = ref([]);
 const loading = ref(false);
 const dialogVisible = ref(false);
+const total = ref(0);
+const page = ref(1);
+const pageSize = ref(20);
 
 // 学年按 8 月切换：8 月前为上一学年，8 月及以后为当前学年。
 const now = new Date();
@@ -270,11 +285,29 @@ const fetchTasks = async () => {
       academic_year: filterAcademicYear.value,
       entry_year: filterEntryYear.value,
       subject_id: filterSubject.value,
+      paged: 1,
+      page: page.value,
+      page_size: pageSize.value,
     });
-    tasks.value = res.data;
+    tasks.value = res.data.items || [];
+    total.value = res.data.total || 0;
   } finally {
     loading.value = false;
   }
+};
+
+const handleFilterChange = () => {
+  page.value = 1;
+  fetchTasks();
+};
+
+const handlePageChange = () => {
+  fetchTasks();
+};
+
+const handlePageSizeChange = () => {
+  page.value = 1;
+  fetchTasks();
 };
 
 const fetchSubjects = async () => {
@@ -337,8 +370,16 @@ const editFullScore = (row) => {
 };
 
 const handleDelete = async (id) => {
-  await deleteExamTask(id);
-  fetchTasks();
+  try {
+    await deleteExamTask(id);
+    ElMessage.success("删除成功");
+    if (tasks.value.length === 1 && page.value > 1) {
+      page.value -= 1;
+    }
+    fetchTasks();
+  } catch (err) {
+    ElMessage.error(err.response?.data?.msg || "删除失败");
+  }
 };
 
 onMounted(() => {
@@ -363,5 +404,10 @@ onMounted(() => {
 .progress-text {
   color: #606266;
   font-size: 12px;
+}
+.pager-wrap {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

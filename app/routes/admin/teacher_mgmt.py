@@ -25,6 +25,13 @@ def get_teachers():
 
     academic_year = request.args.get("academic_year", default_year, type=int)
     status_filter = request.args.get("status", "在职")
+    paged = request.args.get("paged", default=0, type=int) == 1
+    page = request.args.get("page", default=1, type=int) or 1
+    page_size = request.args.get("page_size", type=int)
+    if page_size is None:
+        page_size = request.args.get("limit", default=20, type=int) or 20
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
 
     query = (
         db.session.query(Teacher, User)
@@ -50,7 +57,12 @@ def get_teachers():
     )
     if status_filter != "全部":
         query = query.filter(Teacher.status == status_filter)
-    teachers = query.all()
+    query = query.order_by(Teacher.id.desc())
+    if paged:
+        total = query.count()
+        teachers = query.offset((page - 1) * page_size).limit(page_size).all()
+    else:
+        teachers = query.all()
 
     result = []
     for t, u in teachers:
@@ -129,6 +141,15 @@ def get_teachers():
             }
         )
 
+    if paged:
+        return jsonify(
+            {
+                "items": result,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+            }
+        )
     return jsonify(result)
 
 

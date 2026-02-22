@@ -18,9 +18,25 @@ from . import admin_bp
 
 @admin_bp.route("/classes", methods=["GET"])
 def get_classes():
-    classes = ClassInfo.query.order_by(
+    paged = request.args.get("paged", default=0, type=int) == 1
+    page = request.args.get("page", default=1, type=int) or 1
+    page_size = request.args.get("page_size", type=int)
+    if page_size is None:
+        page_size = request.args.get("limit", default=20, type=int) or 20
+
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+
+    query = ClassInfo.query.order_by(
         ClassInfo.entry_year.desc(), ClassInfo.class_num.asc()
-    ).all()
+    )
+    if paged:
+        pagination = query.paginate(page=page, per_page=page_size, error_out=False)
+        classes = pagination.items
+        total = pagination.total
+    else:
+        classes = query.all()
+        total = len(classes)
 
     class_ids = [c.id for c in classes]
     student_count_map = {}
@@ -33,18 +49,27 @@ def get_classes():
         )
         student_count_map = {class_id: count for class_id, count in rows}
 
-    return jsonify(
-        [
+    items = [
+        {
+            "id": c.id,
+            "entry_year": c.entry_year,
+            "class_num": c.class_num,
+            "grade_name": c.grade_display,
+            "student_count": student_count_map.get(c.id, 0),
+        }
+        for c in classes
+    ]
+
+    if paged:
+        return jsonify(
             {
-                "id": c.id,
-                "entry_year": c.entry_year,
-                "class_num": c.class_num,
-                "grade_name": c.grade_display,
-                "student_count": student_count_map.get(c.id, 0),
+                "items": items,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
             }
-            for c in classes
-        ]
-    )
+        )
+    return jsonify(items)
 
 
 @admin_bp.route("/classes", methods=["POST"])
@@ -83,16 +108,21 @@ def delete_class(class_id):
 
 @admin_bp.route("/students", methods=["GET"])
 def get_students():
-    page = request.args.get("page", 1, type=int)
-    limit = request.args.get("limit", 20, type=int)
+    page = request.args.get("page", default=1, type=int) or 1
+    page_size = request.args.get("page_size", type=int)
+    if page_size is None:
+        page_size = request.args.get("limit", default=20, type=int) or 20
     class_id = request.args.get("class_id", type=int)
+
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
 
     query = Student.query
     if class_id:
         query = query.filter_by(class_id=class_id)
 
     pagination = query.order_by(Student.student_id.asc()).paginate(
-        page=page, per_page=limit, error_out=False
+        page=page, per_page=page_size, error_out=False
     )
 
     data = []
@@ -121,7 +151,14 @@ def get_students():
             }
         )
 
-    return jsonify({"total": pagination.total, "data": data})
+    return jsonify(
+        {
+            "total": pagination.total,
+            "data": data,
+            "page": page,
+            "page_size": page_size,
+        }
+    )
 
 
 @admin_bp.route("/students", methods=["POST"])

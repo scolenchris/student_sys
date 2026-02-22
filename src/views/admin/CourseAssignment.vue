@@ -10,7 +10,7 @@
             placeholder="学年"
             style="width: 140px"
             size="small"
-            @change="fetchData"
+            @change="handleYearChange"
           >
             <el-option
               v-for="year in academicYearOptions"
@@ -64,6 +64,18 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="pager-wrap">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        @size-change="handlePageSizeChange"
+        @current-change="handlePageChange"
+      />
+    </div>
 
     <el-dialog
       v-model="visible"
@@ -175,6 +187,9 @@ const academicYearOptions = computed(() => {
 });
 
 const assignments = ref([]);
+const total = ref(0);
+const page = ref(1);
+const pageSize = ref(20);
 const teachers = ref([]);
 const classes = ref([]);
 const subjects = ref([]);
@@ -192,11 +207,29 @@ const fetchData = async () => {
   try {
     const res = await adminApi.getAssignments({
       academic_year: currentAcademicYear.value,
+      paged: 1,
+      page: page.value,
+      page_size: pageSize.value,
     });
-    assignments.value = res.data;
+    assignments.value = res.data.items || [];
+    total.value = res.data.total || 0;
   } finally {
     loading.value = false;
   }
+};
+
+const handleYearChange = () => {
+  page.value = 1;
+  fetchData();
+};
+
+const handlePageChange = () => {
+  fetchData();
+};
+
+const handlePageSizeChange = () => {
+  page.value = 1;
+  fetchData();
 };
 
 const openDialog = async () => {
@@ -231,6 +264,9 @@ const handleDelete = async (id) => {
   try {
     await adminApi.deleteAssignment(id);
     ElMessage.success("已取消分配");
+    if (assignments.value.length === 1 && page.value > 1) {
+      page.value -= 1;
+    }
     fetchData();
   } catch (err) {
     ElMessage.error("操作失败");
@@ -293,5 +329,10 @@ onMounted(fetchData);
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.pager-wrap {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

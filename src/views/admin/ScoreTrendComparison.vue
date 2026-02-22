@@ -10,7 +10,7 @@
             plain
             @click="exportExcel"
             :loading="exporting"
-            :disabled="displayTableData.length === 0"
+            :disabled="total === 0"
           >
             <el-icon><Download /></el-icon> 导出Excel
           </el-button>
@@ -92,7 +92,7 @@
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" @click="handleSearch" :loading="loading">
+        <el-button type="primary" @click="handleSearch(true)" :loading="loading">
           <el-icon><Search /></el-icon> 查询
         </el-button>
       </el-form-item>
@@ -219,11 +219,23 @@
         </el-table-column>
       </el-table-column>
     </el-table>
+
+    <div class="pager-wrap">
+      <el-pagination
+        v-model:current-page="query.page"
+        v-model:page-size="query.page_size"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        @size-change="handlePageSizeChange"
+        @current-change="handlePageChange"
+      />
+    </div>
   </el-card>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted, watch } from "vue";
 import {
   getSubjects,
   getClasses,
@@ -246,12 +258,15 @@ const subjectColumns = ref([]);
 const examsMeta = ref([]);
 const tableData = ref([]);
 const warnings = ref([]);
+const total = ref(0);
 
 const query = reactive({
   entry_year: null,
   class_ids: [],
   exam_names: [],
   subject_ids: [],
+  page: 1,
+  page_size: 20,
 });
 
 const gradeOptions = computed(() => {
@@ -265,10 +280,9 @@ const filteredClassOptions = computed(() => {
   return allClassOptions.value.filter((c) => c.entry_year === query.entry_year);
 });
 
-// 仅变化模式：只显示任一考试节点有分数或排名变化的学生。
+// 列表分页后端已按 only_changed 过滤，这里直接展示当前页数据。
 const displayTableData = computed(() => {
-  if (!onlyChanged.value) return tableData.value;
-  return tableData.value.filter((row) => row.has_change);
+  return tableData.value;
 });
 
 const initData = async () => {
@@ -286,6 +300,8 @@ const resetResult = () => {
   examsMeta.value = [];
   tableData.value = [];
   warnings.value = [];
+  total.value = 0;
+  query.page = 1;
 };
 
 const handleYearChange = async (val) => {
@@ -303,12 +319,15 @@ const handleYearChange = async (val) => {
   }
 };
 
-const handleSearch = async () => {
+const handleSearch = async (resetPage = false) => {
   if (!query.entry_year) return ElMessage.warning("请选择年级");
   if (query.exam_names.length < 2)
     return ElMessage.warning("请至少选择2次考试");
   if (query.subject_ids.length === 0)
     return ElMessage.warning("请至少选择一个科目");
+  if (resetPage) {
+    query.page = 1;
+  }
 
   loading.value = true;
   try {
@@ -317,12 +336,17 @@ const handleSearch = async () => {
       class_ids: query.class_ids,
       exam_names: query.exam_names,
       subject_ids: query.subject_ids,
+      only_changed: onlyChanged.value,
+      paged: true,
+      page: query.page,
+      page_size: query.page_size,
     });
 
-    subjectColumns.value = res.data.subjects || [];
-    examsMeta.value = res.data.exams || [];
-    tableData.value = res.data.rows || [];
-    warnings.value = res.data.warnings || [];
+    subjectColumns.value = res.data?.subjects || [];
+    examsMeta.value = res.data?.exams || [];
+    tableData.value = res.data?.rows || [];
+    warnings.value = res.data?.warnings || [];
+    total.value = res.data?.total || 0;
 
     if (warnings.value.length > 0) {
       ElMessage.warning("部分考试缺少科目任务，已按0分计算对应科目");
@@ -338,6 +362,15 @@ const handleSearch = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const handlePageChange = () => {
+  handleSearch(false);
+};
+
+const handlePageSizeChange = () => {
+  query.page = 1;
+  handleSearch(false);
 };
 
 const getExamData = (row, examName) => {
@@ -399,6 +432,13 @@ const exportExcel = async () => {
 };
 
 onMounted(initData);
+
+watch(onlyChanged, () => {
+  if (!query.entry_year || query.exam_names.length < 2 || query.subject_ids.length === 0) {
+    return;
+  }
+  handleSearch(true);
+});
 </script>
 
 <style scoped>
@@ -442,5 +482,10 @@ onMounted(initData);
 }
 .delta-neutral {
   color: #909399;
+}
+.pager-wrap {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

@@ -24,7 +24,7 @@ export const getTeachers = (params) => api.get("/teachers", { params });
 export const updateTeacher = (id, data) => api.put(`/teachers/${id}`, data);
 
 // 班级管理
-export const getClasses = () => api.get("/classes");
+export const getClasses = (params) => api.get("/classes", { params });
 export const addClass = (data) => api.post("/classes", data);
 export const deleteClass = (id) => api.delete(`/classes/${id}`);
 

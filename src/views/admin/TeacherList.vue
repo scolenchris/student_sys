@@ -59,7 +59,7 @@
       </div>
     </template>
 
-    <el-table :data="teachers" border stripe size="small">
+    <el-table :data="teachers" border stripe size="small" v-loading="loading">
       <el-table-column prop="name" label="姓名" width="80" fixed />
       <el-table-column prop="gender" label="性别" width="50" />
 
@@ -167,6 +167,18 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="pager-wrap">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        @size-change="handlePageSizeChange"
+        @current-change="handlePageChange"
+      />
+    </div>
 
     <el-dialog
       v-model="editVisible"
@@ -354,6 +366,10 @@ const academicYearOptions = computed(() => {
 });
 
 const teachers = ref([]);
+const loading = ref(false);
+const total = ref(0);
+const page = ref(1);
+const pageSize = ref(20);
 const classOptions = ref([]);
 const subjectOptions = ref([]);
 const editVisible = ref(false);
@@ -383,14 +399,33 @@ const form = reactive({
 });
 
 const fetchData = async () => {
-  const res = await getTeachers({
-    academic_year: currentAcademicYear.value,
-    status: filterStatus.value,
-  });
-  teachers.value = res.data;
+  loading.value = true;
+  try {
+    const res = await getTeachers({
+      academic_year: currentAcademicYear.value,
+      status: filterStatus.value,
+      paged: 1,
+      page: page.value,
+      page_size: pageSize.value,
+    });
+    teachers.value = res.data.items || [];
+    total.value = res.data.total || 0;
+  } finally {
+    loading.value = false;
+  }
 };
 
 const handleFilterChange = () => {
+  page.value = 1;
+  fetchData();
+};
+
+const handlePageChange = () => {
+  fetchData();
+};
+
+const handlePageSizeChange = () => {
+  page.value = 1;
   fetchData();
 };
 
@@ -524,5 +559,10 @@ onMounted(() => {
   color: #606266;
   margin-right: 8px;
   font-weight: bold;
+}
+.pager-wrap {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

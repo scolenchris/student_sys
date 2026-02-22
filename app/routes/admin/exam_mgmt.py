@@ -14,6 +14,13 @@ def get_exam_tasks():
     entry_year = request.args.get("entry_year", type=int)
     subject_id = request.args.get("subject_id", type=int)
     academic_year = request.args.get("academic_year", type=int)
+    paged = request.args.get("paged", default=0, type=int) == 1
+    page = request.args.get("page", default=1, type=int) or 1
+    page_size = request.args.get("page_size", type=int)
+    if page_size is None:
+        page_size = request.args.get("limit", default=20, type=int) or 20
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
 
     query = ExamTask.query
     if entry_year:
@@ -23,7 +30,13 @@ def get_exam_tasks():
     if academic_year:
         query = query.filter_by(academic_year=academic_year)
 
-    tasks = query.order_by(ExamTask.create_time.desc()).all()
+    query = query.order_by(ExamTask.create_time.desc())
+    if paged:
+        pagination = query.paginate(page=page, per_page=page_size, error_out=False)
+        tasks = pagination.items
+        total = pagination.total
+    else:
+        tasks = query.all()
 
     result = []
     for t in tasks:
@@ -45,6 +58,15 @@ def get_exam_tasks():
                 "completion_rate": progress["completion_rate"],
                 "progress_text": progress["progress_text"],
                 "is_fully_completed": progress["is_fully_completed"],
+            }
+        )
+    if paged:
+        return jsonify(
+            {
+                "items": result,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
             }
         )
     return jsonify(result)

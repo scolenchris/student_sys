@@ -39,7 +39,7 @@
           <el-button
             type="info"
             @click="exportCSV"
-            :disabled="tableData.length === 0"
+            :disabled="total === 0"
             style="margin-left: 10px"
           >
             导出统计报表
@@ -117,7 +117,7 @@
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" @click="handleSearch" :loading="loading"
+        <el-button type="primary" @click="handleSearch(true)" :loading="loading"
           >查询</el-button
         >
       </el-form-item>
@@ -239,6 +239,19 @@
         fixed="right"
       />
     </el-table>
+
+    <div class="pager-wrap">
+      <el-pagination
+        v-model:current-page="query.page"
+        v-model:page-size="query.page_size"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        @size-change="handlePageSizeChange"
+        @current-change="handlePageChange"
+      />
+    </div>
+
     <el-dialog
       v-model="importResult.visible"
       title="导入结果报告"
@@ -346,6 +359,7 @@ const loading = ref(false);
 const subjectOptions = ref([]);
 const allClassOptions = ref([]);
 const examNameOptions = ref([]);
+const total = ref(0);
 
 const tableData = ref([]);
 const dynamicColumns = ref([]);
@@ -355,6 +369,8 @@ const query = reactive({
   exam_name: "",
   subject_ids: [],
   class_ids: [],
+  page: 1,
+  page_size: 20,
 });
 
 const importResult = reactive({
@@ -395,6 +411,8 @@ const handleYearChange = async (val) => {
   query.class_ids = [];
   tableData.value = [];
   examNameOptions.value = [];
+  total.value = 0;
+  query.page = 1;
 
   if (!val) return;
 
@@ -406,9 +424,12 @@ const handleYearChange = async (val) => {
   }
 };
 
-const handleSearch = async () => {
+const handleSearch = async (resetPage = false) => {
   if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
     return;
+  }
+  if (resetPage) {
+    query.page = 1;
   }
 
   loading.value = true;
@@ -418,12 +439,17 @@ const handleSearch = async () => {
       exam_name: query.exam_name,
       subject_ids: query.subject_ids,
       class_ids: query.class_ids,
+      paged: true,
+      page: query.page,
+      page_size: query.page_size,
     });
 
-    tableData.value = res.data.data;
-    dynamicColumns.value = res.data.subjects;
+    const payload = res.data || {};
+    tableData.value = payload.items || payload.data || [];
+    dynamicColumns.value = payload.subjects || [];
+    total.value = payload.total || 0;
 
-    if (tableData.value.length === 0) {
+    if (total.value === 0) {
       ElMessage.info("未查询到相关成绩数据");
     }
   } catch (err) {
@@ -433,8 +459,41 @@ const handleSearch = async () => {
   }
 };
 
-const exportCSV = () => {
-  if (tableData.value.length === 0) return;
+const handlePageChange = () => {
+  handleSearch(false);
+};
+
+const handlePageSizeChange = () => {
+  query.page = 1;
+  handleSearch(false);
+};
+
+const exportCSV = async () => {
+  if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
+    return ElMessage.warning("请先完成查询条件选择");
+  }
+
+  let exportRows = [];
+  let exportSubjects = [];
+
+  try {
+    const res = await getComprehensiveReport({
+      entry_year: query.entry_year,
+      exam_name: query.exam_name,
+      subject_ids: query.subject_ids,
+      class_ids: query.class_ids,
+    });
+    exportRows = res.data?.data || [];
+    exportSubjects = res.data?.subjects || [];
+  } catch (err) {
+    ElMessage.error(err.response?.data?.msg || "导出数据获取失败");
+    return;
+  }
+
+  if (exportRows.length === 0) {
+    ElMessage.info("当前筛选条件下没有可导出的数据");
+    return;
+  }
 
   const headers = [
     "级排名(总分并列)",
@@ -445,7 +504,7 @@ const exportCSV = () => {
     "姓名",
     "班级",
     "状态",
-    ...dynamicColumns.value,
+    ...exportSubjects,
     "总分",
     "满分值",
   ];
@@ -453,8 +512,8 @@ const exportCSV = () => {
   let csvContent =
     "data:text/csv;charset=utf-8,\ufeff" + headers.join(",") + "\n";
 
-  tableData.value.forEach((row) => {
-    const subScores = dynamicColumns.value.map((sub) =>
+  exportRows.forEach((row) => {
+    const subScores = exportSubjects.map((sub) =>
       row.scores[sub] !== undefined ? row.scores[sub] : "-",
     );
 
@@ -559,7 +618,7 @@ const handleStrictImport = async (param) => {
     } else {
       importResult.status = "success";
       importResult.msg = res.data.msg;
-      handleSearch();
+      handleSearch(false);
     }
     importResult.logs = res.data.logs;
     importResult.visible = true;
@@ -600,5 +659,10 @@ onMounted(initData);
   background-color: #f5f7fa;
   padding: 15px;
   border-radius: 4px;
+}
+.pager-wrap {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>
