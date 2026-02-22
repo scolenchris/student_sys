@@ -23,8 +23,45 @@
           <div class="card-header">
             <h2>{{ isRegister ? "新用户注册申请" : "欢迎登录" }}</h2>
             <p>{{ isRegister ? "提交后等待管理员审核" : "请输入账号密码进入系统" }}</p>
+            <p class="browser-meta">
+              当前浏览器：{{ browserInfo.name }} {{ browserInfo.version }}
+            </p>
+            <div class="browser-recommend">
+              <p>推荐使用最新版 Microsoft Edge 或 Mozilla Firefox</p>
+              <p>
+                Edge 下载地址：
+                <el-link
+                  :href="edgeDownloadUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  type="primary"
+                >
+                  {{ edgeDownloadUrl }}
+                </el-link>
+              </p>
+              <p>
+                Firefox 下载地址：
+                <el-link
+                  :href="firefoxDownloadUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  type="primary"
+                >
+                  {{ firefoxDownloadUrl }}
+                </el-link>
+              </p>
+            </div>
           </div>
         </template>
+
+        <el-alert
+          v-if="!browserInfo.supported"
+          class="browser-alert"
+          type="error"
+          show-icon
+          :closable="false"
+          :title="browserInfo.message"
+        />
 
         <el-form :model="form" label-width="88px">
           <div v-if="isRegister">
@@ -58,6 +95,7 @@
               type="primary"
               @click="handleSubmit"
               :loading="loading"
+              :disabled="!browserInfo.supported"
             >
               {{ isRegister ? "提交申请" : "立即登录" }}
             </el-button>
@@ -98,6 +136,14 @@ const router = useRouter();
 const isRegister = ref(false);
 const loading = ref(false);
 const allowRegister = ref(true);
+const edgeDownloadUrl = "https://www.microsoft.com/zh-cn/edge/download";
+const firefoxDownloadUrl = "https://www.mozilla.org/zh-CN/firefox/new/";
+const browserInfo = ref({
+  name: "检测中",
+  version: "-",
+  supported: true,
+  message: "",
+});
 
 const form = reactive({
   username: "",
@@ -106,8 +152,83 @@ const form = reactive({
   role: "teacher",
 });
 
+function getMajorVersion(versionText) {
+  const major = Number(String(versionText).split(".")[0]);
+  return Number.isFinite(major) ? major : 0;
+}
+
+function detectBrowser() {
+  const ua = navigator.userAgent;
+  const rules = {
+    Chrome: 90,
+    Edge: 90,
+    Firefox: 88,
+    Safari: 14,
+    Opera: 76,
+  };
+
+  let name = "未知浏览器";
+  let version = "0";
+
+  if (/MSIE\s|Trident\//i.test(ua)) {
+    const match = ua.match(/(MSIE\s|rv:)(\d+(\.\d+)?)/i);
+    name = "IE";
+    version = match?.[2] || "0";
+  } else if (/Edg\/(\d+(\.\d+)?)/i.test(ua)) {
+    const match = ua.match(/Edg\/(\d+(\.\d+)?)/i);
+    name = "Edge";
+    version = match?.[1] || "0";
+  } else if (/Edge\/(\d+(\.\d+)?)/i.test(ua)) {
+    const match = ua.match(/Edge\/(\d+(\.\d+)?)/i);
+    name = "Edge Legacy";
+    version = match?.[1] || "0";
+  } else if (/Firefox\/(\d+(\.\d+)?)/i.test(ua)) {
+    const match = ua.match(/Firefox\/(\d+(\.\d+)?)/i);
+    name = "Firefox";
+    version = match?.[1] || "0";
+  } else if (/OPR\/(\d+(\.\d+)?)/i.test(ua)) {
+    const match = ua.match(/OPR\/(\d+(\.\d+)?)/i);
+    name = "Opera";
+    version = match?.[1] || "0";
+  } else if (/Chrome\/(\d+(\.\d+)?)/i.test(ua)) {
+    const match = ua.match(/Chrome\/(\d+(\.\d+)?)/i);
+    name = "Chrome";
+    version = match?.[1] || "0";
+  } else if (
+    /Safari\/(\d+(\.\d+)?)/i.test(ua) &&
+    /Version\/(\d+(\.\d+)?)/i.test(ua)
+  ) {
+    const match = ua.match(/Version\/(\d+(\.\d+)?)/i);
+    name = "Safari";
+    version = match?.[1] || "0";
+  }
+
+  let supported = true;
+  let message = "";
+  const major = getMajorVersion(version);
+
+  if (name === "IE" || name === "Edge Legacy") {
+    supported = false;
+  } else if (Object.prototype.hasOwnProperty.call(rules, name)) {
+    supported = major >= rules[name];
+  }
+
+  if (!supported) {
+    message =
+      `检测到 ${name} ${version}，当前浏览器不支持本系统。` +
+      "请改用最新版 Microsoft Edge 或 Mozilla Firefox。";
+  }
+
+  return { name, version, supported, message };
+}
+
 // 初始化注册开关状态。请求失败时默认保持可注册，避免页面闪烁。
 onMounted(async () => {
+  browserInfo.value = detectBrowser();
+  if (!browserInfo.value.supported) {
+    ElMessage.error("当前浏览器版本不受支持，请更换后再登录");
+  }
+
   try {
     const res = await getRegisterConfig();
     allowRegister.value = res.data.allow_register;
@@ -269,6 +390,27 @@ const handleSubmit = async () => {
   margin: 8px 0 0;
   color: #6b849f;
   font-size: 13px;
+}
+
+.browser-meta {
+  margin-top: 10px;
+  color: #3f5f7f;
+}
+
+.browser-recommend {
+  margin-top: 8px;
+  color: #4f6883;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.browser-recommend p {
+  margin: 4px 0;
+  word-break: break-all;
+}
+
+.browser-alert {
+  margin-bottom: 16px;
 }
 
 .btn-group {
