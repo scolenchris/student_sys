@@ -3,7 +3,7 @@
     <template #header>
       <div class="header-row">
         <span class="title">敏感操作审计日志</span>
-        <el-button type="primary" plain @click="fetchLogs">刷新</el-button>
+        <el-button type="primary" plain @click="fetchLogs">刷新日志列表</el-button>
       </div>
     </template>
 
@@ -49,8 +49,8 @@
         end-placeholder="结束日期"
       />
 
-      <el-button type="primary" @click="handleSearch">查询</el-button>
-      <el-button @click="resetFilters">重置</el-button>
+      <el-button type="primary" @click="handleSearch">查询日志</el-button>
+      <el-button @click="resetFilters">清空筛选</el-button>
     </div>
 
     <el-table :data="logs" border stripe v-loading="loading">

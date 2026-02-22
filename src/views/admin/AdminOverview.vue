@@ -20,7 +20,7 @@
         </el-select>
         <el-button type="primary" @click="loadOverview">
           <el-icon><Refresh /></el-icon>
-          刷新数据
+          刷新总览数据
         </el-button>
       </div>
     </section>
@@ -142,7 +142,7 @@
             />
           </el-select>
           <el-button type="primary" plain @click="loadScoreInsight">
-            更新图表
+            刷新成绩图表
           </el-button>
         </div>
 

@@ -40,6 +40,10 @@ export const getExamNames = (entry_year) =>
   api.get("/stats/exam_names", { params: { entry_year } });
 export const getComprehensiveReport = (data) =>
   api.post("/stats/comprehensive_report", data);
+export const exportComprehensiveReportExcel = (data) =>
+  api.post("/stats/comprehensive_report_export", data, {
+    responseType: "blob",
+  });
 export const getScoreRankTrend = (data) =>
   api.post("/stats/score_rank_trend", data);
 export const exportScoreRankTrendExcel = (data) =>
@@ -113,6 +117,10 @@ export const getClassScoreStats = (data) =>
 // 教师统计
 export const getTeacherScoreStats = (data) =>
   api.post("/stats/teacher_score_stats", data);
+export const exportTeacherScoreStatsExcel = (data) =>
+  api.post("/stats/teacher_score_stats_export", data, {
+    responseType: "blob",
+  });
 
 // 成绩模板/备份
 export const getScoreTemplate = (data) =>

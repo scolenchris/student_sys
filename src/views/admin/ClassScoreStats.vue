@@ -66,7 +66,7 @@
 
         <el-form-item>
           <el-button type="primary" @click="handleSearch" :loading="loading">
-            <el-icon><Search /></el-icon> 开始统计
+            <el-icon><Search /></el-icon> 生成班级统计
           </el-button>
         </el-form-item>
       </div>

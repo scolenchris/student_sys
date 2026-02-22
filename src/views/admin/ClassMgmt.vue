@@ -25,7 +25,7 @@
             :loading="deletingClassId === row.id"
             @click="handleDeleteClass(row)"
           >
-            删除
+            删除班级
           </el-button>
         </template>
       </el-table-column>

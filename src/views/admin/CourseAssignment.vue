@@ -37,11 +37,11 @@
 
           <el-button type="primary" @click="openDialog">
             <el-icon style="margin-right: 5px"><Plus /></el-icon>
-            新增分配
+            新增任课分配
           </el-button>
           <el-button type="warning" @click="handleExport">
             <el-icon style="margin-right: 5px"><Download /></el-icon>
-            下载模板/备份
+            下载任课表模板
           </el-button>
         </div>
       </div>
@@ -58,7 +58,7 @@
             @confirm="handleDelete(scope.row.id)"
           >
             <template #reference>
-              <el-button type="danger" link size="small">取消分配</el-button>
+              <el-button type="danger" link size="small">移除任课分配</el-button>
             </template>
           </el-popconfirm>
         </template>
@@ -130,8 +130,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" @click="submit">确定分配</el-button>
+        <el-button @click="visible = false">取消本次分配</el-button>
+        <el-button type="primary" @click="submit">提交任课分配</el-button>
       </template>
     </el-dialog>
 
@@ -162,7 +162,7 @@
         </el-table-column>
       </el-table>
       <template #footer>
-        <el-button @click="errorDialogVisible = false">关闭</el-button>
+        <el-button @click="errorDialogVisible = false">关闭错误详情</el-button>
       </template>
     </el-dialog>
   </el-card>

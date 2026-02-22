@@ -29,6 +29,36 @@ def get_comprehensive_report():
     return jsonify(payload)
 
 
+@admin_bp.route("/stats/comprehensive_report_export", methods=["POST"])
+def export_comprehensive_report_excel():
+    data = request.get_json() or {}
+    export_query = dict(data)
+    export_query["paged"] = False
+    export_query.pop("page", None)
+    export_query.pop("page_size", None)
+
+    payload, err = stats_service.build_comprehensive_report(export_query)
+    if err:
+        msg, status = err
+        return jsonify({"msg": msg}), status
+
+    try:
+        output, filename = excel_service.build_comprehensive_report_excel(
+            payload=payload,
+            entry_year=str(data.get("entry_year", "")).strip() or "未指定年级",
+            exam_name=str(data.get("exam_name", "")).strip() or "未命名考试",
+        )
+    except ValueError as e:
+        return jsonify({"msg": str(e)}), 400
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=quote(filename),
+    )
+
+
 @admin_bp.route("/stats/score_rank_trend", methods=["POST"])
 def get_score_rank_trend():
     payload, err = stats_service.build_score_rank_trend_payload(request.get_json() or {})
@@ -82,3 +112,28 @@ def get_teacher_score_stats():
         return jsonify({"msg": msg}), status
     return jsonify(payload)
 
+
+@admin_bp.route("/stats/teacher_score_stats_export", methods=["POST"])
+def export_teacher_score_stats_excel():
+    data = request.get_json() or {}
+    payload, err = stats_service.build_teacher_score_stats(data)
+    if err:
+        msg, status = err
+        return jsonify({"msg": msg}), status
+
+    try:
+        output, filename = excel_service.build_teacher_score_stats_excel(
+            rows=payload,
+            entry_year=str(data.get("entry_year", "")).strip() or "未指定年级",
+            exam_name=str(data.get("exam_name", "")).strip() or "未命名考试",
+            academic_year=data.get("academic_year"),
+        )
+    except ValueError as e:
+        return jsonify({"msg": str(e)}), 400
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=quote(filename),
+    )

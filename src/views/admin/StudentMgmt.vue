@@ -20,7 +20,7 @@
         </el-select>
         <el-button type="warning" plain @click="handleExport">
           <el-icon style="margin-right: 5px"><Download /></el-icon>
-          下载模板/备份
+          下载学生名单模板
         </el-button>
       </div>
 
@@ -33,7 +33,7 @@
           accept=".xlsx, .xls"
           style="display: inline-block; margin-right: 10px"
         >
-          <el-button type="success">Excel 导入</el-button>
+          <el-button type="success">导入学生Excel</el-button>
         </el-upload>
         <el-button type="primary" @click="openDialog('add')"
           >新增学生</el-button
@@ -88,7 +88,7 @@
             size="small"
             @click="openDialog('edit', scope.row)"
           >
-            编辑
+            编辑学生
           </el-button>
           <el-popconfirm
             title="确定要删除该学生吗？"
@@ -98,7 +98,7 @@
             @confirm="handleDelete(scope.row)"
           >
             <template #reference>
-              <el-button size="small" type="danger" plain>删除</el-button>
+              <el-button size="small" type="danger" plain>删除学生</el-button>
             </template>
           </el-popconfirm>
           <el-button
@@ -107,7 +107,7 @@
             size="small"
             @click="handlePrintCert(scope.row)"
           >
-            <el-icon><Document /></el-icon> 证明
+            <el-icon><Document /></el-icon> 下载证明
           </el-button>
         </template>
       </el-table-column>
@@ -200,9 +200,9 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button @click="dialogVisible = false">取消编辑</el-button>
         <el-button type="primary" @click="submitForm" :loading="submitting"
-          >保存</el-button
+          >保存学生信息</el-button
         >
       </template>
     </el-dialog>

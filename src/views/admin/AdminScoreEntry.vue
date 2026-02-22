@@ -61,7 +61,7 @@
             @click="saveAllScores"
             :loading="saving"
           >
-            <el-icon><Select /></el-icon> 保存成绩
+            <el-icon><Select /></el-icon> 保存本场成绩
           </el-button>
         </div>
       </div>

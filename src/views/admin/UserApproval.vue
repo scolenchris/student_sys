@@ -60,7 +60,7 @@
             @confirm="handleApprove(scope.row.id)"
           >
             <template #reference>
-              <el-button type="warning" size="small">返聘/解冻</el-button>
+              <el-button type="warning" size="small">恢复账号并返聘</el-button>
             </template>
           </el-popconfirm>
 
@@ -71,7 +71,7 @@
           >
             <template #reference>
               <el-button type="danger" size="small" style="margin-left: 10px"
-                >拒绝</el-button
+                >拒绝并删除申请</el-button
               >
             </template>
           </el-popconfirm>

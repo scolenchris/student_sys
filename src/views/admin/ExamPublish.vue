@@ -3,7 +3,7 @@
     <template #header>
       <div class="header">
         <h3>考试发布与管理</h3>
-        <el-button type="primary" @click="openDialog">发布新考试</el-button>
+        <el-button type="primary" @click="openDialog">新建考试任务</el-button>
       </div>
     </template>
 
@@ -98,14 +98,14 @@
       <el-table-column label="操作" width="120" fixed="right">
         <template #default="scope">
           <el-button type="primary" link @click="editFullScore(scope.row)"
-            >改满分</el-button
+            >修改满分</el-button
           >
           <el-popconfirm
             title="确定删除吗？"
             @confirm="handleDelete(scope.row.id)"
           >
             <template #reference>
-              <el-button type="danger" link>删除</el-button>
+              <el-button type="danger" link>删除任务</el-button>
             </template>
           </el-popconfirm>
         </template>
@@ -197,8 +197,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm">确定发布</el-button>
+        <el-button @click="dialogVisible = false">取消发布</el-button>
+        <el-button type="primary" @click="submitForm">发布考试任务</el-button>
       </template>
     </el-dialog>
   </el-card>

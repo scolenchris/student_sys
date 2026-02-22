@@ -17,7 +17,7 @@
               <el-option label="任课分配" value="course_assign" />
               <el-option label="成绩" value="score" />
             </el-select>
-            <el-button type="primary" @click="fetchHistory">刷新</el-button>
+            <el-button type="primary" @click="fetchHistory">刷新导入记录</el-button>
           </div>
         </div>
       </template>
@@ -55,7 +55,7 @@
               :disabled="!row.can_rollback"
               @click="handleRollback(row)"
             >
-              回退
+              回退该批次
             </el-button>
           </template>
         </el-table-column>

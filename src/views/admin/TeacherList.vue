@@ -41,7 +41,7 @@
         <div style="display: flex; gap: 10px">
           <el-button type="warning" @click="handleExport">
             <el-icon style="margin-right: 5px"><Download /></el-icon>
-            下载模板/备份
+            下载教师信息模板
           </el-button>
           <el-upload
             class="upload-demo"
@@ -52,7 +52,7 @@
           >
             <el-button type="success">
               <el-icon style="margin-right: 5px"><Upload /></el-icon>
-              Excel批量导入职务
+              导入教师信息Excel
             </el-button>
           </el-upload>
         </div>
@@ -154,14 +154,14 @@
             link
             size="small"
             @click="editTeacher(scope.row)"
-            >编辑</el-button
+            >编辑教师</el-button
           >
           <el-popconfirm
             title="确定将密码重置为 123456 吗?"
             @confirm="handleResetPwd(scope.row.id)"
           >
             <template #reference>
-              <el-button type="danger" link size="small">重置密码</el-button>
+              <el-button type="danger" link size="small">重置登录密码</el-button>
             </template>
           </el-popconfirm>
         </template>
@@ -319,7 +319,7 @@
                 ></el-button>
               </div>
               <el-button type="primary" link size="small" @click="addPrep"
-                >+ 添加备课组</el-button
+                >+ 新增备课组</el-button
               >
             </el-form-item>
           </el-form>
@@ -327,8 +327,8 @@
       </el-tabs>
 
       <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveTeacher">保存修改</el-button>
+        <el-button @click="editVisible = false">取消编辑</el-button>
+        <el-button type="primary" @click="saveTeacher">保存教师变更</el-button>
       </template>
     </el-dialog>
   </el-card>

@@ -6,9 +6,10 @@
         <el-button
           type="success"
           @click="exportToExcel"
+          :loading="exporting"
           :disabled="tableData.length === 0"
         >
-          <el-icon><Download /></el-icon> 导出报表
+          <el-icon><Download /></el-icon> 导出教师统计Excel
         </el-button>
       </div>
     </template>
@@ -63,7 +64,7 @@
 
       <el-form-item>
         <el-button type="primary" @click="fetchData" :loading="loading">
-          <el-icon><Search /></el-icon> 开始统计
+          <el-icon><Search /></el-icon> 生成教师统计
         </el-button>
       </el-form-item>
 
@@ -163,6 +164,7 @@
 import { ref, reactive, computed, onMounted } from "vue";
 import {
   getTeacherScoreStats,
+  exportTeacherScoreStatsExcel,
   getClasses,
   getExamNames,
 } from "../../api/admin";
@@ -170,6 +172,7 @@ import { ElMessage } from "element-plus";
 import { Search, Download } from "@element-plus/icons-vue";
 
 const loading = ref(false);
+const exporting = ref(false);
 const tableData = ref([]);
 const allClasses = ref([]);
 const examNameOptions = ref([]);
@@ -240,45 +243,33 @@ const tableRowClassName = ({ row }) => {
   return "";
 };
 
-const exportToExcel = () => {
-  if (!tableData.value.length) return;
+const exportToExcel = async () => {
+  if (!query.academic_year || !query.entry_year || !query.exam_name) {
+    return ElMessage.warning("请先选择学年、年级和考试批次");
+  }
 
-  const headers = [
-    "姓名,学年,学科,成绩类别,满分,班级,学生人数,考试人数,平均分,名次,与级比,优秀人数,优秀率%,合格人数,合格率%",
-  ];
-
-  const rows = tableData.value.map((item) => {
-    return [
-      item.name,
-      item.academic_year,
-      item.subject,
-      item.exam_name,
-      item.full_score,
-      `"${item.classes}"`,
-      item.total_people,
-      item.exam_people,
-      item.avg_score,
-      item.rank,
-      item.grade_ratio,
-      item.excellent_count,
-      item.excellent_rate,
-      item.pass_count,
-      item.pass_rate,
-    ].join(",");
-  });
-
-  const csvContent =
-    "data:text/csv;charset=utf-8,\ufeff" + headers.concat(rows).join("\n");
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute(
-    "download",
-    `教师教学统计_${query.entry_year}级_${query.exam_name}.csv`
-  );
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  exporting.value = true;
+  try {
+    const res = await exportTeacherScoreStatsExcel(query);
+    const blob = new Blob([res.data], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `${query.entry_year}级_${query.exam_name}_教师教学统计.xlsx`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    ElMessage.error(err.response?.data?.msg || "导出失败");
+  } finally {
+    exporting.value = false;
+  }
 };
 
 onMounted(init);

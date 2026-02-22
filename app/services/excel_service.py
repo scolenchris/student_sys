@@ -170,6 +170,120 @@ def build_score_rank_trend_excel(payload, entry_year, only_changed=False):
     return output, filename
 
 
+def build_comprehensive_report_excel(payload, entry_year, exam_name):
+    rows = payload.get("data", []) if isinstance(payload, dict) else []
+    subjects = payload.get("subjects", []) if isinstance(payload, dict) else []
+
+    if not rows:
+        raise ValueError("当前筛选条件下没有可导出的数据")
+
+    export_columns = [
+        "级排名(总分并列)",
+        "级排名(规则严格)",
+        "班排名(总分并列)",
+        "班排名(规则严格)",
+        "学号",
+        "姓名",
+        "班级",
+        "状态",
+        *subjects,
+        "总分",
+        "满分值",
+    ]
+
+    records = []
+    for row in rows:
+        score_map = row.get("scores", {}) or {}
+        item = {
+            "级排名(总分并列)": _to_excel_value(row.get("grade_rank_skip")),
+            "级排名(规则严格)": _to_excel_value(row.get("grade_rank_dense")),
+            "班排名(总分并列)": _to_excel_value(row.get("class_rank_skip")),
+            "班排名(规则严格)": _to_excel_value(row.get("class_rank_dense")),
+            "学号": row.get("student_id", ""),
+            "姓名": row.get("name", ""),
+            "班级": row.get("class_name", ""),
+            "状态": row.get("status", ""),
+            "总分": _to_excel_value(row.get("total")),
+            "满分值": _to_excel_value(row.get("full_score")),
+        }
+        for subject_name in subjects:
+            item[subject_name] = _to_excel_value(score_map.get(subject_name, "-"))
+        records.append(item)
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(records).reindex(columns=export_columns).to_excel(
+            writer, index=False, sheet_name="综合成绩统计"
+        )
+
+    output.seek(0)
+    safe_entry_year = str(entry_year).strip() or "未指定年级"
+    safe_exam_name = str(exam_name).strip() or "未命名考试"
+    filename = f"{safe_entry_year}级_{safe_exam_name}_综合成绩统计.xlsx"
+    return output, filename
+
+
+def build_teacher_score_stats_excel(rows, entry_year, exam_name, academic_year):
+    if not rows:
+        raise ValueError("当前筛选条件下没有可导出的数据")
+
+    columns = [
+        "姓名",
+        "学年",
+        "学科",
+        "成绩类别",
+        "满分",
+        "任教班级",
+        "学生人数",
+        "考试人数",
+        "平均分",
+        "名次",
+        "与级比",
+        "优秀人数",
+        "优秀率%",
+        "合格人数",
+        "合格率%",
+    ]
+
+    data_list = []
+    for item in rows:
+        data_list.append(
+            {
+                "姓名": item.get("name", ""),
+                "学年": item.get("academic_year", ""),
+                "学科": item.get("subject", ""),
+                "成绩类别": item.get("exam_name", ""),
+                "满分": _to_excel_value(item.get("full_score")),
+                "任教班级": item.get("classes", ""),
+                "学生人数": _to_excel_value(item.get("total_people")),
+                "考试人数": _to_excel_value(item.get("exam_people")),
+                "平均分": _to_excel_value(item.get("avg_score")),
+                "名次": _to_excel_value(item.get("rank")),
+                "与级比": _to_excel_value(item.get("grade_ratio")),
+                "优秀人数": _to_excel_value(item.get("excellent_count")),
+                "优秀率%": _to_excel_value(item.get("excellent_rate")),
+                "合格人数": _to_excel_value(item.get("pass_count")),
+                "合格率%": _to_excel_value(item.get("pass_rate")),
+            }
+        )
+
+    output = io.BytesIO()
+    sheet_base_name = "教师教学统计"
+    if academic_year:
+        sheet_base_name = f"{academic_year}学年教师统计"
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(data_list).reindex(columns=columns).to_excel(
+            writer, index=False, sheet_name=sheet_base_name[:31]
+        )
+
+    output.seek(0)
+    safe_entry_year = str(entry_year).strip() or "未指定年级"
+    safe_exam_name = str(exam_name).strip() or "未命名考试"
+    filename = f"{safe_entry_year}级_{safe_exam_name}_教师教学统计.xlsx"
+    return output, filename
+
+
 def process_students_import(file):
     try:
         df = pd.read_excel(file).fillna("")

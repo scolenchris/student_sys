@@ -11,7 +11,7 @@
               @click="handleTemplateDownload('template')"
               :disabled="!query.entry_year || query.subject_ids.length === 0"
             >
-              <el-icon><Document /></el-icon> 下载录入模版
+              <el-icon><Document /></el-icon> 下载成绩录入模板
             </el-button>
             <el-button
               type="success"
@@ -19,7 +19,7 @@
               @click="handleTemplateDownload('backup')"
               :disabled="!query.entry_year || !query.exam_name"
             >
-              <el-icon><Download /></el-icon> 导出备份
+              <el-icon><Download /></el-icon> 导出考试成绩备份
             </el-button>
           </el-button-group>
 
@@ -32,17 +32,17 @@
             style="display: inline-block; margin-left: 10px"
           >
             <el-button type="primary">
-              <el-icon><Upload /></el-icon> 严谨导入成绩
+              <el-icon><Upload /></el-icon> 执行严格导入
             </el-button>
           </el-upload>
 
           <el-button
             type="info"
-            @click="exportCSV"
+            @click="exportExcelReport"
             :disabled="total === 0"
             style="margin-left: 10px"
           >
-            导出统计报表
+            导出综合统计Excel
           </el-button>
         </div>
       </div>
@@ -118,7 +118,7 @@
 
       <el-form-item>
         <el-button type="primary" @click="handleSearch(true)" :loading="loading"
-          >查询</el-button
+          >生成综合统计</el-button
         >
       </el-form-item>
     </el-form>
@@ -331,7 +331,7 @@
       </div>
 
       <template #footer>
-        <el-button @click="importResult.visible = false">关闭</el-button>
+        <el-button @click="importResult.visible = false">关闭导入报告</el-button>
       </template>
     </el-dialog>
   </el-card>
@@ -344,6 +344,7 @@ import {
   getClasses,
   getExamNames,
   getComprehensiveReport,
+  exportComprehensiveReportExcel,
   getScoreTemplate,
   importAdminScores,
 } from "../../api/admin";
@@ -468,79 +469,34 @@ const handlePageSizeChange = () => {
   handleSearch(false);
 };
 
-const exportCSV = async () => {
+const exportExcelReport = async () => {
   if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
     return ElMessage.warning("请先完成查询条件选择");
   }
 
-  let exportRows = [];
-  let exportSubjects = [];
-
   try {
-    const res = await getComprehensiveReport({
+    const res = await exportComprehensiveReportExcel({
       entry_year: query.entry_year,
       exam_name: query.exam_name,
       subject_ids: query.subject_ids,
       class_ids: query.class_ids,
     });
-    exportRows = res.data?.data || [];
-    exportSubjects = res.data?.subjects || [];
+
+    const blob = new Blob([res.data], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const fileName = `${query.entry_year}级_${query.exam_name}_综合成绩统计.xlsx`;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   } catch (err) {
-    ElMessage.error(err.response?.data?.msg || "导出数据获取失败");
-    return;
+    ElMessage.error(err.response?.data?.msg || "导出Excel失败");
   }
-
-  if (exportRows.length === 0) {
-    ElMessage.info("当前筛选条件下没有可导出的数据");
-    return;
-  }
-
-  const headers = [
-    "级排名(总分并列)",
-    "级排名(规则严格)",
-    "班排名(总分并列)",
-    "班排名(规则严格)",
-    "学号",
-    "姓名",
-    "班级",
-    "状态",
-    ...exportSubjects,
-    "总分",
-    "满分值",
-  ];
-
-  let csvContent =
-    "data:text/csv;charset=utf-8,\ufeff" + headers.join(",") + "\n";
-
-  exportRows.forEach((row) => {
-    const subScores = exportSubjects.map((sub) =>
-      row.scores[sub] !== undefined ? row.scores[sub] : "-",
-    );
-
-    const rowData = [
-      row.grade_rank_skip,
-      row.grade_rank_dense,
-      row.class_rank_skip,
-      row.class_rank_dense,
-      row.student_id,
-      row.name,
-      row.class_name,
-      row.status,
-      ...subScores,
-      row.total,
-      row.full_score,
-    ];
-    csvContent += rowData.join(",") + "\n";
-  });
-
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  const fileName = `${query.entry_year}级_${query.exam_name}_成绩报表.csv`;
-  link.setAttribute("download", fileName);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
 };
 
 const handleTemplateDownload = async (type) => {
@@ -563,7 +519,7 @@ const handleTemplateDownload = async (type) => {
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const link = document.createElement("a");
     link.href = url;
-    const prefix = type === "backup" ? "成绩备份" : "录入模版";
+    const prefix = type === "backup" ? "成绩备份" : "录入模板";
     link.setAttribute("download", `${query.entry_year}级_${prefix}.xlsx`);
     document.body.appendChild(link);
     link.click();

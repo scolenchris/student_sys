@@ -12,7 +12,7 @@
             :loading="exporting"
             :disabled="total === 0"
           >
-            <el-icon><Download /></el-icon> 导出Excel
+            <el-icon><Download /></el-icon> 导出变化分析Excel
           </el-button>
         </div>
       </div>
@@ -93,7 +93,7 @@
 
       <el-form-item>
         <el-button type="primary" @click="handleSearch(true)" :loading="loading">
-          <el-icon><Search /></el-icon> 查询
+          <el-icon><Search /></el-icon> 生成变化分析
         </el-button>
       </el-form-item>
     </el-form>
