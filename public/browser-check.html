@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>浏览器兼容性检测</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+        background: linear-gradient(140deg, #f3f9ff 0%, #e7f1fb 45%, #f9fbff 100%);
+        color: #1c4066;
+      }
+
+      .wrap {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        box-sizing: border-box;
+      }
+
+      .panel {
+        width: 100%;
+        max-width: 760px;
+        background: #ffffff;
+        border: 1px solid #d7e5f7;
+        border-radius: 14px;
+        box-shadow: 0 10px 24px rgba(20, 60, 94, 0.1);
+        padding: 24px;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 24px;
+      }
+
+      p {
+        margin: 8px 0;
+        line-height: 1.7;
+      }
+
+      .warn {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #fff1f1;
+        border: 1px solid #f2c7c7;
+        color: #8b2f2f;
+      }
+
+      .meta {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #f3f8ff;
+        border: 1px solid #d8e8fb;
+      }
+
+      .actions {
+        margin-top: 14px;
+      }
+
+      .actions a {
+        display: inline-block;
+        margin: 6px 12px 0 0;
+        color: #0f67b5;
+        text-decoration: none;
+      }
+
+      .actions a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="panel">
+        <h1>当前浏览器不支持本系统</h1>
+        <p>检测到你的浏览器版本过低或不支持 ES Module，无法正常加载页面。</p>
+        <div class="warn">
+          推荐使用最新版 Microsoft Edge 或 Mozilla Firefox，然后重新访问系统。
+        </div>
+        <div class="meta" id="browserInfo">正在检测浏览器信息...</div>
+        <div class="actions">
+          <a
+            href="https://www.microsoft.com/zh-cn/edge/download"
+            target="_blank"
+            rel="noopener noreferrer"
+            >下载最新版 Edge</a
+          >
+          <a
+            href="https://www.mozilla.org/zh-CN/firefox/new/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >下载最新版 Firefox</a
+          >
+          <a href="/">完成升级后返回系统</a>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        function parseBrowser() {
+          var ua = navigator.userAgent || "";
+          var name = "未知浏览器";
+          var version = "未知版本";
+          var match;
+
+          if (/MSIE\s|Trident\//i.test(ua)) {
+            match = ua.match(/(MSIE\s|rv:)(\d+(\.\d+)?)/i);
+            name = "IE";
+            version = match && match[2] ? match[2] : version;
+          } else if (/Edg\/(\d+(\.\d+)?)/i.test(ua)) {
+            match = ua.match(/Edg\/(\d+(\.\d+)?)/i);
+            name = "Edge";
+            version = match && match[1] ? match[1] : version;
+          } else if (/Edge\/(\d+(\.\d+)?)/i.test(ua)) {
+            match = ua.match(/Edge\/(\d+(\.\d+)?)/i);
+            name = "Edge Legacy";
+            version = match && match[1] ? match[1] : version;
+          } else if (/Firefox\/(\d+(\.\d+)?)/i.test(ua)) {
+            match = ua.match(/Firefox\/(\d+(\.\d+)?)/i);
+            name = "Firefox";
+            version = match && match[1] ? match[1] : version;
+          } else if (/OPR\/(\d+(\.\d+)?)/i.test(ua)) {
+            match = ua.match(/OPR\/(\d+(\.\d+)?)/i);
+            name = "Opera";
+            version = match && match[1] ? match[1] : version;
+          } else if (/Chrome\/(\d+(\.\d+)?)/i.test(ua)) {
+            match = ua.match(/Chrome\/(\d+(\.\d+)?)/i);
+            name = "Chrome";
+            version = match && match[1] ? match[1] : version;
+          } else if (/Version\/(\d+(\.\d+)?)/i.test(ua) && /Safari/i.test(ua)) {
+            match = ua.match(/Version\/(\d+(\.\d+)?)/i);
+            name = "Safari";
+            version = match && match[1] ? match[1] : version;
+          }
+
+          return {
+            name: name,
+            version: version,
+            ua: ua,
+          };
+        }
+
+        var info = parseBrowser();
+        var container = document.getElementById("browserInfo");
+        if (container) {
+          container.innerHTML =
+            "当前浏览器：" +
+            info.name +
+            " " +
+            info.version +
+            "<br>UA：" +
+            info.ua;
+        }
+      })();
+    </script>
+  </body>
+</html>
