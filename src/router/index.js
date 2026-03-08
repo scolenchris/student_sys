@@ -91,6 +91,14 @@ const routes = [
         path: "scores",
         component: () => import("../views/teacher/ScoreEntry.vue"),
       },
+      {
+        path: "class-rank-trend",
+        component: () => import("../views/teacher/ClassRankTrend.vue"),
+      },
+      {
+        path: "history-scores",
+        component: () => import("../views/teacher/HistoryScoreQuery.vue"),
+      },
     ],
   },
   {

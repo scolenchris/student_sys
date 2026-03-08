@@ -19,6 +19,12 @@ api.interceptors.request.use((config) => {
 // 教师任教课程
 export const getMyCourses = () => api.get("/my_courses");
 export const getDashboardTodos = () => api.get("/dashboard_todos");
+export const getRankTrendContexts = () => api.get("/rank_trend_contexts");
+export const getClassRankTrend = (params) =>
+  api.get("/class_rank_trend", { params });
+export const getHistoryExams = (params) => api.get("/history_exams", { params });
+export const getHistoryScores = (params) =>
+  api.get("/history_scores", { params });
 
 // 成绩列表
 export const getScoreList = (params) => api.get("/score_list", { params });

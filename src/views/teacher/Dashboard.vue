@@ -15,6 +15,14 @@
           <el-icon><EditPen /></el-icon>
           <span>成绩录入</span>
         </el-menu-item>
+        <el-menu-item index="/teacher/class-rank-trend">
+          <el-icon><DataLine /></el-icon>
+          <span>班级级排趋势</span>
+        </el-menu-item>
+        <el-menu-item index="/teacher/history-scores">
+          <el-icon><Reading /></el-icon>
+          <span>历史成绩查询</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -48,7 +56,15 @@
 <script setup>
 import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { EditPen, Expand, Fold, Lock, SwitchButton } from "@element-plus/icons-vue";
+import {
+  DataLine,
+  EditPen,
+  Expand,
+  Fold,
+  Lock,
+  Reading,
+  SwitchButton,
+} from "@element-plus/icons-vue";
 
 const router = useRouter();
 const route = useRoute();

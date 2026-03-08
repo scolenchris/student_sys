@@ -93,6 +93,95 @@ def _count_abnormal_scores(exam_task_id, student_ids, pass_line):
     return abnormal_count
 
 
+def _build_rank_trend_exam_labels(tasks):
+    name_counter = defaultdict(int)
+    labeled = []
+    for task in tasks:
+        name_counter[task.name] += 1
+        idx = name_counter[task.name]
+        label = task.name if idx == 1 else f"{task.name}({idx})"
+        labeled.append({"task": task, "x_label": label})
+    return labeled
+
+
+def _build_competition_rank(avg_items, class_num_map):
+    # 并列同名次且跳号：1,2,2,4
+    sorted_items = sorted(
+        avg_items,
+        key=lambda item: (
+            -item["avg_score"],
+            class_num_map.get(item["class_id"], 9999),
+            item["class_id"],
+        ),
+    )
+
+    rank_map = {}
+    prev_avg = None
+    prev_rank = None
+    for idx, item in enumerate(sorted_items):
+        avg_val = item["avg_score"]
+        if prev_avg is not None and abs(avg_val - prev_avg) <= 1e-9:
+            rank = prev_rank
+        else:
+            rank = idx + 1
+        rank_map[item["class_id"]] = rank
+        prev_avg = avg_val
+        prev_rank = rank
+
+    return rank_map
+
+
+def _build_teacher_trend_contexts(teacher_id):
+    rows = (
+        db.session.query(
+            CourseAssignment.academic_year,
+            ClassInfo.entry_year,
+            ClassInfo.id.label("class_id"),
+            ClassInfo.class_num,
+            Subject.id.label("subject_id"),
+            Subject.name.label("subject_name"),
+        )
+        .join(ClassInfo, CourseAssignment.class_id == ClassInfo.id)
+        .join(Subject, CourseAssignment.subject_id == Subject.id)
+        .filter(CourseAssignment.teacher_id == teacher_id)
+        .all()
+    )
+
+    ctx_map = {}
+    for row in rows:
+        key = (row.entry_year, row.academic_year, row.subject_id)
+        if key not in ctx_map:
+            ctx_map[key] = {
+                "context_key": f"{row.entry_year}-{row.subject_id}-{row.academic_year}",
+                "entry_year": row.entry_year,
+                "academic_year": row.academic_year,
+                "subject_id": row.subject_id,
+                "subject_name": row.subject_name,
+                "classes": [],
+            }
+
+        ctx_map[key]["classes"].append(
+            {
+                "class_id": row.class_id,
+                "class_num": row.class_num,
+                "class_name": f"{row.entry_year}级({row.class_num})班",
+            }
+        )
+
+    contexts = list(ctx_map.values())
+    for item in contexts:
+        item["classes"].sort(key=lambda c: c["class_num"])
+
+    contexts.sort(
+        key=lambda c: (
+            -c["academic_year"],
+            -c["entry_year"],
+            c["subject_id"],
+        )
+    )
+    return contexts
+
+
 # --- 1. 获取当前老师的任教课程 ---
 @teacher_bp.route("/my_courses", methods=["GET"])
 @teacher_bp.route("/my_courses/<int:user_id>", methods=["GET"])
@@ -268,6 +357,221 @@ def get_dashboard_todos():
             "pending_items": pending_items,
             "abnormal_items": abnormal_items,
             "total_todos": len(pending_items) + len(abnormal_items),
+        }
+    )
+
+
+# --- 1.2 获取教师可查看的排名趋势上下文 ---
+@teacher_bp.route("/rank_trend_contexts", methods=["GET"])
+def get_rank_trend_contexts():
+    teacher, err = _get_current_teacher()
+    if err:
+        return err
+
+    contexts = _build_teacher_trend_contexts(teacher.id)
+    return jsonify(contexts)
+
+
+# --- 1.3 获取教师班级全年级排名趋势 ---
+@teacher_bp.route("/class_rank_trend", methods=["GET"])
+def get_class_rank_trend():
+    entry_year = request.args.get("entry_year", type=int)
+    subject_id = request.args.get("subject_id", type=int)
+    academic_year = request.args.get("academic_year", type=int)
+
+    class_id_raw = (request.args.get("class_id") or "").strip()
+    class_id = None
+    if class_id_raw:
+        try:
+            class_id = int(class_id_raw)
+        except ValueError:
+            return jsonify({"msg": "参数缺失或不合法"}), 400
+
+    if not entry_year or not subject_id or not academic_year:
+        return jsonify({"msg": "参数缺失或不合法"}), 400
+
+    teacher, err = _get_current_teacher()
+    if err:
+        return err
+
+    teacher_assignments = (
+        db.session.query(
+            CourseAssignment.class_id,
+            ClassInfo.class_num,
+        )
+        .join(ClassInfo, CourseAssignment.class_id == ClassInfo.id)
+        .filter(
+            CourseAssignment.teacher_id == teacher.id,
+            CourseAssignment.subject_id == subject_id,
+            CourseAssignment.academic_year == academic_year,
+            ClassInfo.entry_year == entry_year,
+        )
+        .all()
+    )
+
+    if not teacher_assignments:
+        return jsonify({"msg": "无权查看该科目趋势"}), 403
+
+    allowed_class_ids = {row.class_id for row in teacher_assignments}
+    if class_id and class_id not in allowed_class_ids:
+        return jsonify({"msg": "无权查看该班级趋势"}), 403
+
+    subject_obj = Subject.query.get(subject_id)
+    if not subject_obj:
+        return jsonify({"msg": "参数缺失或不合法"}), 400
+
+    grade_classes = (
+        ClassInfo.query.filter_by(entry_year=entry_year)
+        .order_by(ClassInfo.class_num.asc())
+        .all()
+    )
+    class_num_map = {c.id: c.class_num for c in grade_classes}
+    class_name_map = {c.id: f"{entry_year}级({c.class_num})班" for c in grade_classes}
+    grade_class_ids = [c.id for c in grade_classes]
+
+    if class_id:
+        target_class_ids = [class_id]
+    else:
+        target_class_ids = sorted(
+            list(allowed_class_ids),
+            key=lambda cid: (class_num_map.get(cid, 9999), cid),
+        )
+
+    tasks = (
+        ExamTask.query.filter(
+            ExamTask.entry_year == entry_year,
+            ExamTask.subject_id == subject_id,
+            ExamTask.academic_year == academic_year,
+        )
+        .order_by(ExamTask.create_time.asc(), ExamTask.id.asc())
+        .all()
+    )
+    labeled_tasks = _build_rank_trend_exam_labels(tasks)
+
+    warnings = []
+    if len(labeled_tasks) < 2:
+        warnings.append("可比较考试不足2次，趋势仅供参考。")
+
+    if not labeled_tasks:
+        return jsonify(
+            {
+                "meta": {
+                    "entry_year": entry_year,
+                    "academic_year": academic_year,
+                    "subject_id": subject_id,
+                    "subject_name": subject_obj.name,
+                    "class_filter": class_id,
+                },
+                "exams": [],
+                "series": [
+                    {
+                        "class_id": cid,
+                        "class_name": class_name_map.get(cid, "未知班级"),
+                        "ranks": [],
+                        "avg_scores": [],
+                        "exam_people": [],
+                    }
+                    for cid in target_class_ids
+                ],
+                "warnings": warnings,
+            }
+        )
+
+    task_ids = [item["task"].id for item in labeled_tasks]
+    student_rows = Student.query.filter(Student.class_id.in_(grade_class_ids)).all()
+    student_class_map = {s.id: s.class_id for s in student_rows}
+
+    score_rows = (
+        Score.query.filter(Score.exam_task_id.in_(task_ids))
+        .order_by(Score.id.desc())
+        .all()
+    )
+
+    # 防御性去重：同一学生同一考试保留最新一条。
+    latest_score_map = {}
+    for score in score_rows:
+        key = (score.exam_task_id, score.student_id)
+        if key not in latest_score_map:
+            latest_score_map[key] = score
+
+    exam_class_sum = defaultdict(lambda: defaultdict(float))
+    exam_class_count = defaultdict(lambda: defaultdict(int))
+
+    for score in latest_score_map.values():
+        if (score.remark or "").strip() == "缺考":
+            continue
+        if score.score is None:
+            continue
+
+        rank_class_id = score.class_id_snapshot or student_class_map.get(score.student_id)
+        if rank_class_id not in grade_class_ids:
+            continue
+
+        exam_class_sum[score.exam_task_id][rank_class_id] += float(score.score)
+        exam_class_count[score.exam_task_id][rank_class_id] += 1
+
+    exam_avg_map = {}
+    exam_rank_map = {}
+
+    for item in labeled_tasks:
+        task_id = item["task"].id
+        avg_items = []
+        class_avg = {}
+
+        for cid, score_sum in exam_class_sum.get(task_id, {}).items():
+            cnt = exam_class_count.get(task_id, {}).get(cid, 0)
+            if cnt <= 0:
+                continue
+            avg_val = score_sum / cnt
+            class_avg[cid] = round(avg_val, 2)
+            avg_items.append({"class_id": cid, "avg_score": avg_val})
+
+        exam_avg_map[task_id] = class_avg
+        exam_rank_map[task_id] = _build_competition_rank(avg_items, class_num_map)
+
+    series = []
+    for cid in target_class_ids:
+        ranks = []
+        avg_scores = []
+        exam_people = []
+
+        for item in labeled_tasks:
+            task_id = item["task"].id
+            ranks.append(exam_rank_map.get(task_id, {}).get(cid))
+            avg_scores.append(exam_avg_map.get(task_id, {}).get(cid))
+            exam_people.append(exam_class_count.get(task_id, {}).get(cid, 0))
+
+        series.append(
+            {
+                "class_id": cid,
+                "class_name": class_name_map.get(cid, "未知班级"),
+                "ranks": ranks,
+                "avg_scores": avg_scores,
+                "exam_people": exam_people,
+            }
+        )
+
+    exams = [
+        {
+            "exam_task_id": item["task"].id,
+            "exam_name": item["task"].name,
+            "x_label": item["x_label"],
+        }
+        for item in labeled_tasks
+    ]
+
+    return jsonify(
+        {
+            "meta": {
+                "entry_year": entry_year,
+                "academic_year": academic_year,
+                "subject_id": subject_id,
+                "subject_name": subject_obj.name,
+                "class_filter": class_id,
+            },
+            "exams": exams,
+            "series": series,
+            "warnings": warnings,
         }
     )
 
@@ -558,6 +862,114 @@ def get_available_exams():
             for t in tasks
         ]
     )
+
+
+# --- 历史查询：获取某班级某科目的全部历史考试（含已关闭） ---
+@teacher_bp.route("/history_exams", methods=["GET"])
+def get_history_exams():
+    class_id = request.args.get("class_id", type=int)
+    subject_id = request.args.get("subject_id", type=int)
+
+    if not class_id or not subject_id:
+        return jsonify([])
+
+    teacher, err = _get_current_teacher()
+    if err:
+        return err
+
+    cls = ClassInfo.query.get(class_id)
+    if not cls:
+        return jsonify([])
+
+    assignments = CourseAssignment.query.filter_by(
+        teacher_id=teacher.id,
+        class_id=class_id,
+        subject_id=subject_id,
+    ).all()
+    if not assignments:
+        return jsonify([])
+
+    academic_years = {a.academic_year for a in assignments}
+    if not academic_years:
+        return jsonify([])
+
+    tasks = (
+        ExamTask.query.filter(
+            ExamTask.entry_year == cls.entry_year,
+            ExamTask.subject_id == subject_id,
+            ExamTask.academic_year.in_(academic_years),
+        )
+        .order_by(ExamTask.create_time.desc(), ExamTask.id.desc())
+        .all()
+    )
+
+    return jsonify(
+        [
+            {
+                "id": t.id,
+                "name": t.name,
+                "full_score": t.full_score,
+                "is_active": t.is_active,
+                "academic_year": t.academic_year,
+            }
+            for t in tasks
+        ]
+    )
+
+
+# --- 历史查询：查询某次考试成绩（只读） ---
+@teacher_bp.route("/history_scores", methods=["GET"])
+def get_history_scores():
+    class_id = request.args.get("class_id", type=int)
+    exam_task_id = request.args.get("exam_task_id", type=int)
+    keyword = (request.args.get("keyword") or "").strip()
+
+    if not class_id or not exam_task_id:
+        return jsonify({"msg": "参数缺失"}), 400
+
+    teacher, err = _get_current_teacher()
+    if err:
+        return err
+
+    task = ExamTask.query.get(exam_task_id)
+    if not task:
+        return jsonify({"msg": "考试任务不存在"}), 404
+
+    if not _teacher_can_operate_task_class(teacher.id, class_id, task):
+        return jsonify({"msg": "无权访问该班级历史成绩"}), 403
+
+    rows = (
+        db.session.query(Score, Student)
+        .join(Student, Score.student_id == Student.id)
+        .filter(Score.exam_task_id == exam_task_id)
+        .all()
+    )
+
+    result = []
+    for score_obj, stu in rows:
+        rank_class_id = score_obj.class_id_snapshot or stu.class_id
+        if rank_class_id != class_id:
+            continue
+
+        student_no = str(stu.student_id or "")
+        student_name = str(stu.name or "")
+        if keyword and keyword not in student_no and keyword not in student_name:
+            continue
+
+        is_absent = (score_obj.remark or "").strip() == "缺考"
+        display_score = "缺考" if is_absent else score_obj.score
+        result.append(
+            {
+                "student_id": stu.id,
+                "student_no": student_no,
+                "name": student_name,
+                "score": display_score,
+                "remark": "缺考" if is_absent else "",
+            }
+        )
+
+    result.sort(key=lambda item: item["student_no"])
+    return jsonify({"items": result, "total": len(result)})
 
 
 # --- 5. 导出成绩单/录入模板 (XLSX格式) ---
