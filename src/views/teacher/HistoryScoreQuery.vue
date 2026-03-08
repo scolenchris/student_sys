@@ -51,6 +51,18 @@
       </el-form-item>
 
       <el-form-item>
+        <el-button
+          type="success"
+          plain
+          :disabled="!query.exam_task_id"
+          :loading="exporting"
+          @click="handleExport"
+        >
+          导出 Excel
+        </el-button>
+      </el-form-item>
+
+      <el-form-item>
         <el-button type="primary" :loading="loading" @click="handleSearch">
           查询成绩
         </el-button>
@@ -88,12 +100,14 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import {
+  exportHistoryScores,
   getHistoryExams,
   getHistoryScores,
   getRankTrendContexts,
 } from "../../api/teacher";
 
 const loading = ref(false);
+const exporting = ref(false);
 const contexts = ref([]);
 const examList = ref([]);
 const tableData = ref([]);
@@ -138,6 +152,9 @@ const courseOptions = computed(() => {
 
 const selectedCourse = computed(() =>
   courseOptions.value.find((item) => item.key === query.course_key),
+);
+const selectedExam = computed(() =>
+  examList.value.find((item) => item.id === query.exam_task_id),
 );
 
 const formatExamLabel = (exam) => {
@@ -209,6 +226,43 @@ const handleSearch = async () => {
     ElMessage.error(err.response?.data?.msg || "查询历史成绩失败");
   } finally {
     loading.value = false;
+  }
+};
+
+const handleExport = async () => {
+  if (!selectedCourse.value) {
+    return ElMessage.warning("请先选择班级科目");
+  }
+  if (!query.exam_task_id) {
+    return ElMessage.warning("请选择历史考试");
+  }
+
+  exporting.value = true;
+  try {
+    const res = await exportHistoryScores({
+      class_id: selectedCourse.value.class_id,
+      exam_task_id: query.exam_task_id,
+      keyword: query.keyword,
+    });
+
+    const blob = new Blob([res.data], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const fileName = `${selectedCourse.value.label}-${
+      selectedExam.value?.name || "历史考试"
+    }-历史成绩.xlsx`;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    ElMessage.error(err.response?.data?.msg || "导出失败");
+  } finally {
+    exporting.value = false;
   }
 };
 

@@ -25,6 +25,11 @@ export const getClassRankTrend = (params) =>
 export const getHistoryExams = (params) => api.get("/history_exams", { params });
 export const getHistoryScores = (params) =>
   api.get("/history_scores", { params });
+export const exportHistoryScores = (params) =>
+  api.get("/history_scores_export", {
+    params,
+    responseType: "blob",
+  });
 
 // 成绩列表
 export const getScoreList = (params) => api.get("/score_list", { params });

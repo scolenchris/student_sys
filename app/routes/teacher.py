@@ -182,6 +182,43 @@ def _build_teacher_trend_contexts(teacher_id):
     return contexts
 
 
+def _query_history_score_items(exam_task_id, class_id, keyword=""):
+    rows = (
+        db.session.query(Score, Student)
+        .join(Student, Score.student_id == Student.id)
+        .filter(Score.exam_task_id == exam_task_id)
+        .all()
+    )
+
+    result = []
+    keyword = (keyword or "").strip()
+
+    for score_obj, stu in rows:
+        rank_class_id = score_obj.class_id_snapshot or stu.class_id
+        if rank_class_id != class_id:
+            continue
+
+        student_no = str(stu.student_id or "")
+        student_name = str(stu.name or "")
+        if keyword and keyword not in student_no and keyword not in student_name:
+            continue
+
+        is_absent = (score_obj.remark or "").strip() == "缺考"
+        display_score = "缺考" if is_absent else score_obj.score
+        result.append(
+            {
+                "student_id": stu.id,
+                "student_no": student_no,
+                "name": student_name,
+                "score": display_score,
+                "remark": "缺考" if is_absent else "",
+            }
+        )
+
+    result.sort(key=lambda item: item["student_no"])
+    return result
+
+
 # --- 1. 获取当前老师的任教课程 ---
 @teacher_bp.route("/my_courses", methods=["GET"])
 @teacher_bp.route("/my_courses/<int:user_id>", methods=["GET"])
@@ -938,38 +975,67 @@ def get_history_scores():
     if not _teacher_can_operate_task_class(teacher.id, class_id, task):
         return jsonify({"msg": "无权访问该班级历史成绩"}), 403
 
-    rows = (
-        db.session.query(Score, Student)
-        .join(Student, Score.student_id == Student.id)
-        .filter(Score.exam_task_id == exam_task_id)
-        .all()
-    )
+    result = _query_history_score_items(exam_task_id, class_id, keyword)
+    return jsonify({"items": result, "total": len(result)})
 
-    result = []
-    for score_obj, stu in rows:
-        rank_class_id = score_obj.class_id_snapshot or stu.class_id
-        if rank_class_id != class_id:
-            continue
 
-        student_no = str(stu.student_id or "")
-        student_name = str(stu.name or "")
-        if keyword and keyword not in student_no and keyword not in student_name:
-            continue
+# --- 历史查询：导出某次考试成绩（只读导出） ---
+@teacher_bp.route("/history_scores_export", methods=["GET"])
+def export_history_scores():
+    class_id = request.args.get("class_id", type=int)
+    exam_task_id = request.args.get("exam_task_id", type=int)
+    keyword = (request.args.get("keyword") or "").strip()
 
-        is_absent = (score_obj.remark or "").strip() == "缺考"
-        display_score = "缺考" if is_absent else score_obj.score
-        result.append(
+    if not class_id or not exam_task_id:
+        return jsonify({"msg": "参数缺失"}), 400
+
+    teacher, err = _get_current_teacher()
+    if err:
+        return err
+
+    task = ExamTask.query.get(exam_task_id)
+    cls = ClassInfo.query.get(class_id)
+    if not task or not cls:
+        return jsonify({"msg": "考试任务或班级不存在"}), 404
+
+    if not _teacher_can_operate_task_class(teacher.id, class_id, task):
+        return jsonify({"msg": "无权导出该班级历史成绩"}), 403
+
+    items = _query_history_score_items(exam_task_id, class_id, keyword)
+    class_name = f"{cls.entry_year}级({cls.class_num})班"
+    subject_name = task.subject.name if task.subject else ""
+
+    export_rows = []
+    export_columns = ["学年", "考试名称", "班级", "科目", "学号", "姓名", "成绩", "备注"]
+    for item in items:
+        export_rows.append(
             {
-                "student_id": stu.id,
-                "student_no": student_no,
-                "name": student_name,
-                "score": display_score,
-                "remark": "缺考" if is_absent else "",
+                "学年": f"{task.academic_year}学年",
+                "考试名称": task.name,
+                "班级": class_name,
+                "科目": subject_name,
+                "学号": item["student_no"],
+                "姓名": item["name"],
+                "成绩": item["score"],
+                "备注": item["remark"],
             }
         )
 
-    result.sort(key=lambda item: item["student_no"])
-    return jsonify({"items": result, "total": len(result)})
+    df = pd.DataFrame(export_rows, columns=export_columns)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="历史成绩查询")
+
+    output.seek(0)
+    filename = quote(f"{class_name}-{subject_name}-{task.name}-历史成绩.xlsx")
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
+        max_age=0,
+    )
 
 
 # --- 5. 导出成绩单/录入模板 (XLSX格式) ---
