@@ -33,10 +33,16 @@
         <el-button type="primary" plain @click="handleKeywordSearch">
           搜索
         </el-button>
-        <el-button type="warning" plain @click="handleExport">
-          <el-icon style="margin-right: 5px"><Download /></el-icon>
-          下载学生名单模板
-        </el-button>
+        <el-button-group>
+          <el-button type="warning" plain @click="handleExport('template')">
+            <el-icon style="margin-right: 5px"><Document /></el-icon>
+            下载学生名单模板
+          </el-button>
+          <el-button type="success" plain @click="handleExport('backup')">
+            <el-icon style="margin-right: 5px"><Download /></el-icon>
+            信息备份导出
+          </el-button>
+        </el-button-group>
       </div>
 
       <div>
@@ -442,18 +448,27 @@ const handlePrintCert = async (row) => {
   }
 };
 
-const handleExport = async () => {
+const handleExport = async (mode) => {
   try {
-    const res = await exportStudents({ class_id: filterClassId.value });
+    const res = await exportStudents({
+      class_id: filterClassId.value,
+      mode,
+    });
 
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const link = document.createElement("a");
     link.href = url;
 
-    let fname = "学生名单_备份.xlsx";
-    if (filterClassId.value) {
-      const cls = classes.value.find((c) => c.id === filterClassId.value);
-      if (cls) fname = `${formatClassName(cls)}_学生名单.xlsx`;
+    const cls = classes.value.find((c) => c.id === filterClassId.value);
+    let fname =
+      mode === "template"
+        ? "全体学生名单_导入模板.xlsx"
+        : "全体学生名单_信息备份.xlsx";
+    if (cls) {
+      fname =
+        mode === "template"
+          ? `${formatClassName(cls)}_学生名单_导入模板.xlsx`
+          : `${formatClassName(cls)}_学生名单_信息备份.xlsx`;
     }
 
     link.setAttribute("download", fname);
@@ -462,7 +477,7 @@ const handleExport = async () => {
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   } catch (err) {
-    ElMessage.error("导出失败，请稍后重试");
+    ElMessage.error(err.response?.data?.msg || "导出失败，请稍后重试");
     console.error(err);
   }
 };

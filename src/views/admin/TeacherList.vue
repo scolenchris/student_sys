@@ -64,10 +64,16 @@
         </div>
 
         <div style="display: flex; gap: 10px">
-          <el-button type="warning" @click="handleExport">
-            <el-icon style="margin-right: 5px"><Download /></el-icon>
-            下载教师信息模板
-          </el-button>
+          <el-button-group>
+            <el-button type="warning" @click="handleExport('template')">
+              <el-icon style="margin-right: 5px"><Document /></el-icon>
+              下载教师信息模板
+            </el-button>
+            <el-button type="success" plain @click="handleExport('backup')">
+              <el-icon style="margin-right: 5px"><Download /></el-icon>
+              信息备份导出
+            </el-button>
+          </el-button-group>
           <el-upload
             class="upload-demo"
             action=""
@@ -371,7 +377,7 @@ import {
   exportTeachers,
 } from "../../api/admin";
 import { ElMessage } from "element-plus";
-import { Delete, Download, Upload, Search } from "@element-plus/icons-vue";
+import { Delete, Document, Download, Upload, Search } from "@element-plus/icons-vue";
 
 // 学年按 9 月切换。
 const now = new Date();
@@ -540,25 +546,27 @@ const handleResetPwd = async (id) => {
   }
 };
 
-const handleExport = async () => {
+const handleExport = async (mode) => {
   try {
     const res = await exportTeachers({
       academic_year: currentAcademicYear.value,
+      mode,
     });
 
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute(
-      "download",
-      `${currentAcademicYear.value}学年_教师信息表.xlsx`,
-    );
+    const fileName =
+      mode === "template"
+        ? `${currentAcademicYear.value}学年_教师信息导入模板.xlsx`
+        : `${currentAcademicYear.value}学年_教师信息表_信息备份.xlsx`;
+    link.setAttribute("download", fileName);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   } catch (err) {
-    ElMessage.error("导出失败");
+    ElMessage.error(err.response?.data?.msg || "导出失败");
   }
 };
 

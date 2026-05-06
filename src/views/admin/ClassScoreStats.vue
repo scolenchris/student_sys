@@ -2,13 +2,23 @@
   <el-card class="stats-card">
     <template #header>
       <div class="header-row">
-        <span>班级成绩统计分析</span>
-        <el-tooltip
-          content="统计仅包含'在读'学生；'考试人数'指至少有一科有效成绩的学生；缺考不计入平均分分母(视具体后端逻辑而定)"
-          placement="top"
+        <div class="header-title">
+          <span>班级成绩统计分析</span>
+          <el-tooltip
+            content="统计仅包含'在读'学生；'考试人数'指至少有一科有效成绩的学生；缺考不计入平均分分母(视具体后端逻辑而定)"
+            placement="top"
+          >
+            <el-icon><InfoFilled /></el-icon>
+          </el-tooltip>
+        </div>
+        <el-button
+          type="success"
+          @click="handleExport"
+          :loading="exporting"
+          :disabled="tableData.length === 0"
         >
-          <el-icon><InfoFilled /></el-icon>
-        </el-tooltip>
+          <el-icon><Download /></el-icon> 导出统计Excel
+        </el-button>
       </div>
     </template>
 
@@ -220,11 +230,13 @@ import {
   getClasses,
   getExamNames,
   getClassScoreStats,
+  exportClassScoreStatsExcel,
 } from "../../api/admin";
 import { ElMessage } from "element-plus";
-import { Search, InfoFilled } from "@element-plus/icons-vue";
+import { Search, InfoFilled, Download } from "@element-plus/icons-vue";
 
 const loading = ref(false);
+const exporting = ref(false);
 const subjectOptions = ref([]);
 const allClassOptions = ref([]);
 const examNameOptions = ref([]);
@@ -284,6 +296,35 @@ const handleSearch = async () => {
     ElMessage.error(err.response?.data?.msg || "统计失败");
   } finally {
     loading.value = false;
+  }
+};
+
+const handleExport = async () => {
+  if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
+    return ElMessage.warning("请先选择年级、考试名称及统计科目");
+  }
+
+  exporting.value = true;
+  try {
+    const res = await exportClassScoreStatsExcel(query);
+    const blob = new Blob([res.data], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `${query.entry_year}级_${query.exam_name}_班级成绩统计.xlsx`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    ElMessage.error(err.response?.data?.msg || "导出失败");
+  } finally {
+    exporting.value = false;
   }
 };
 
@@ -427,6 +468,11 @@ onMounted(initData);
   align-items: center;
   font-weight: bold;
   font-size: 16px;
+}
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .filter-form {
   background-color: #f8f9fa;

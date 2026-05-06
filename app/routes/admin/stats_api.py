@@ -104,6 +104,31 @@ def get_class_score_stats():
     return jsonify(payload)
 
 
+@admin_bp.route("/stats/class_score_stats_export", methods=["POST"])
+def export_class_score_stats_excel():
+    data = request.get_json() or {}
+    payload, err = stats_service.build_class_score_stats(data)
+    if err:
+        msg, status = err
+        return jsonify({"msg": msg}), status
+
+    try:
+        output, filename = excel_service.build_class_score_stats_excel(
+            rows=payload,
+            entry_year=str(data.get("entry_year", "")).strip() or "未指定年级",
+            exam_name=str(data.get("exam_name", "")).strip() or "未命名考试",
+        )
+    except ValueError as e:
+        return jsonify({"msg": str(e)}), 400
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=quote(filename),
+    )
+
+
 @admin_bp.route("/stats/teacher_score_stats", methods=["POST"])
 def get_teacher_score_stats():
     payload, err = stats_service.build_teacher_score_stats(request.get_json() or {})

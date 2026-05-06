@@ -32,6 +32,13 @@ from app.utils.helpers import (
 )
 
 
+def _normalize_export_mode(mode):
+    normalized = str(mode or "backup").strip().lower()
+    if normalized not in {"template", "backup"}:
+        raise ValueError("导出模式无效")
+    return normalized
+
+
 def build_score_rank_trend_excel(payload, entry_year, only_changed=False):
     subjects = payload.get("subjects", [])
     exams = payload.get("exams", [])
@@ -284,6 +291,103 @@ def build_teacher_score_stats_excel(rows, entry_year, exam_name, academic_year):
     return output, filename
 
 
+def build_class_score_stats_excel(rows, entry_year, exam_name):
+    if not rows:
+        raise ValueError("当前筛选条件下没有可导出的数据")
+
+    columns = [
+        "班级",
+        "统计科目",
+        "满分",
+        "在读人数",
+        "考试人数",
+        "平均分",
+        "级比率%",
+        "最高分",
+        "最低分",
+        "优秀人数",
+        "优秀率%",
+        "合格人数",
+        "合格率%",
+        "不合格人数",
+        "不合格率%",
+        "低分人数",
+        "低分率%",
+    ]
+
+    data_list = []
+    for item in rows:
+        data_list.append(
+            {
+                "班级": item.get("class_name", ""),
+                "统计科目": item.get("subjects", ""),
+                "满分": _to_excel_value(item.get("full_score")),
+                "在读人数": _to_excel_value(item.get("total_people")),
+                "考试人数": _to_excel_value(item.get("exam_people")),
+                "平均分": _to_excel_value(item.get("avg_score")),
+                "级比率%": _to_excel_value(item.get("grade_ratio")),
+                "最高分": _to_excel_value(item.get("max_score")),
+                "最低分": _to_excel_value(item.get("min_score")),
+                "优秀人数": _to_excel_value(item.get("excellent_count")),
+                "优秀率%": _to_excel_value(item.get("excellent_rate")),
+                "合格人数": _to_excel_value(item.get("pass_count")),
+                "合格率%": _to_excel_value(item.get("pass_rate")),
+                "不合格人数": _to_excel_value(item.get("fail_count")),
+                "不合格率%": _to_excel_value(item.get("fail_rate")),
+                "低分人数": _to_excel_value(item.get("low_count")),
+                "低分率%": _to_excel_value(item.get("low_rate")),
+            }
+        )
+
+    total_exam_people = sum((item.get("exam_people") or 0) for item in rows)
+    total_sum_score = sum((item.get("sum_score") or 0) for item in rows)
+    valid_rows = [item for item in rows if (item.get("exam_people") or 0) > 0]
+
+    def calc_rate(total_count):
+        return round(total_count / total_exam_people * 100, 1) if total_exam_people > 0 else 0
+
+    summary_row = {
+        "班级": "全级合计",
+        "统计科目": rows[0].get("subjects", ""),
+        "满分": _to_excel_value(rows[0].get("full_score")),
+        "在读人数": _to_excel_value(sum((item.get("total_people") or 0) for item in rows)),
+        "考试人数": _to_excel_value(total_exam_people),
+        "平均分": _to_excel_value(
+            round(total_sum_score / total_exam_people, 1) if total_exam_people > 0 else 0
+        ),
+        "级比率%": 100,
+        "最高分": _to_excel_value(
+            max((item.get("max_score") or 0) for item in valid_rows) if valid_rows else 0
+        ),
+        "最低分": _to_excel_value(
+            min((item.get("min_score") or 0) for item in valid_rows) if valid_rows else 0
+        ),
+        "优秀人数": _to_excel_value(sum((item.get("excellent_count") or 0) for item in rows)),
+        "优秀率%": _to_excel_value(
+            calc_rate(sum((item.get("excellent_count") or 0) for item in rows))
+        ),
+        "合格人数": _to_excel_value(sum((item.get("pass_count") or 0) for item in rows)),
+        "合格率%": _to_excel_value(calc_rate(sum((item.get("pass_count") or 0) for item in rows))),
+        "不合格人数": _to_excel_value(sum((item.get("fail_count") or 0) for item in rows)),
+        "不合格率%": _to_excel_value(calc_rate(sum((item.get("fail_count") or 0) for item in rows))),
+        "低分人数": _to_excel_value(sum((item.get("low_count") or 0) for item in rows)),
+        "低分率%": _to_excel_value(calc_rate(sum((item.get("low_count") or 0) for item in rows))),
+    }
+    data_list.append(summary_row)
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(data_list).reindex(columns=columns).to_excel(
+            writer, index=False, sheet_name="班级成绩统计"
+        )
+
+    output.seek(0)
+    safe_entry_year = str(entry_year).strip() or "未指定年级"
+    safe_exam_name = str(exam_name).strip() or "未命名考试"
+    filename = f"{safe_entry_year}级_{safe_exam_name}_班级成绩统计.xlsx"
+    return output, filename
+
+
 def process_students_import(file):
     try:
         df = pd.read_excel(file).fillna("")
@@ -410,21 +514,8 @@ def process_students_import(file):
         return {"msg": f"数据库错误: {str(e)}"}, 500
 
 
-def export_students_excel(class_id):
-    query = Student.query
-    if class_id:
-        query = query.filter_by(class_id=class_id)
-
-    students = (
-        query.join(ClassInfo)
-        .order_by(
-            ClassInfo.entry_year.desc(),
-            ClassInfo.class_num.asc(),
-            Student.student_id.asc(),
-        )
-        .all()
-    )
-
+def export_students_excel(class_id=None, mode="backup"):
+    mode = _normalize_export_mode(mode)
     columns = [
         "学号",
         "姓名",
@@ -439,41 +530,61 @@ def export_students_excel(class_id):
     ]
 
     data_list = []
-    for s in students:
-        class_name = ""
-        if s.current_class_rel:
-            c = s.current_class_rel
-            short_year = str(c.entry_year)[-2:]
-            class_num_str = str(c.class_num).zfill(2)
-            class_name = f"{short_year}级({class_num_str})班"
+    if mode == "backup":
+        query = Student.query
+        if class_id:
+            query = query.filter_by(class_id=class_id)
 
-        data_list.append(
-            {
-                "学号": s.student_id,
-                "姓名": s.name,
-                "性别": s.gender,
-                "班级": class_name,
-                "状态": s.status,
-                "身份证号": s.id_card_number,
-                "市学籍号": s.city_school_id,
-                "国家学籍号": s.national_school_id,
-                "户籍": s.household_registration,
-                "备注": s.remarks,
-            }
+        students = (
+            query.join(ClassInfo)
+            .order_by(
+                ClassInfo.entry_year.desc(),
+                ClassInfo.class_num.asc(),
+                Student.student_id.asc(),
+            )
+            .all()
         )
+
+        for s in students:
+            class_name = ""
+            if s.current_class_rel:
+                c = s.current_class_rel
+                short_year = str(c.entry_year)[-2:]
+                class_num_str = str(c.class_num).zfill(2)
+                class_name = f"{short_year}级({class_num_str})班"
+
+            data_list.append(
+                {
+                    "学号": s.student_id,
+                    "姓名": s.name,
+                    "性别": s.gender,
+                    "班级": class_name,
+                    "状态": s.status,
+                    "身份证号": s.id_card_number,
+                    "市学籍号": s.city_school_id,
+                    "国家学籍号": s.national_school_id,
+                    "户籍": s.household_registration,
+                    "备注": s.remarks,
+                }
+            )
 
     df = pd.DataFrame(data_list, columns=columns)
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="学生信息")
+        sheet_name = "学生导入模板" if mode == "template" else "学生信息备份"
+        df.to_excel(writer, index=False, sheet_name=sheet_name)
 
     output.seek(0)
-    filename = "全体学生名单_备份.xlsx"
-    if class_id:
-        cls = ClassInfo.query.get(class_id)
+    cls = ClassInfo.query.get(class_id) if class_id else None
+    if mode == "template":
+        filename = "全体学生名单_导入模板.xlsx"
         if cls:
-            filename = f"{cls.full_name}_学生名单.xlsx"
+            filename = f"{cls.full_name}_学生名单_导入模板.xlsx"
+    else:
+        filename = "全体学生名单_信息备份.xlsx"
+        if cls:
+            filename = f"{cls.full_name}_学生名单_信息备份.xlsx"
     return output, filename
 
 
@@ -911,19 +1022,26 @@ def process_course_assignments_import(file, academic_year):
         return {"msg": f"数据库写入错误: {str(e)}"}, 500
 
 
-def export_course_assignments_excel():
+def export_course_assignments_excel(academic_year=None, mode="backup"):
+    mode = _normalize_export_mode(mode)
     classes = ClassInfo.query.order_by(
         ClassInfo.entry_year.desc(), ClassInfo.class_num.asc()
     ).all()
     subjects = Subject.query.order_by(Subject.id).all()
 
-    if not classes:
+    if mode == "backup" and not classes:
         raise ValueError("暂无班级数据，请先在班级管理中创建班级")
 
-    ht_assigns = HeadTeacherAssignment.query.all()
+    ht_query = HeadTeacherAssignment.query
+    if academic_year:
+        ht_query = ht_query.filter_by(academic_year=academic_year)
+    ht_assigns = ht_query.all()
     ht_map = {ht.class_id: ht.teacher.name for ht in ht_assigns if ht.teacher}
 
-    course_assigns = CourseAssignment.query.all()
+    ca_query = CourseAssignment.query
+    if academic_year:
+        ca_query = ca_query.filter_by(academic_year=academic_year)
+    course_assigns = ca_query.all()
     ca_map = {
         (ca.class_id, ca.subject_id): ca.teacher.name
         for ca in course_assigns
@@ -931,15 +1049,20 @@ def export_course_assignments_excel():
     }
 
     data_list = []
-    for cls in classes:
-        short_year = str(cls.entry_year)[-2:]
-        class_num_str = str(cls.class_num).zfill(2)
-        class_name_str = f"{short_year}级({class_num_str})班"
+    if mode == "backup":
+        for cls in classes:
+            short_year = str(cls.entry_year)[-2:]
+            class_num_str = str(cls.class_num).zfill(2)
+            class_name_str = f"{short_year}级({class_num_str})班"
 
-        row = {"班级名称": class_name_str, "人数": cls.students.count(), "班主任": ht_map.get(cls.id, "")}
-        for sub in subjects:
-            row[sub.name] = ca_map.get((cls.id, sub.id), "")
-        data_list.append(row)
+            row = {
+                "班级名称": class_name_str,
+                "人数": cls.students.count(),
+                "班主任": ht_map.get(cls.id, ""),
+            }
+            for sub in subjects:
+                row[sub.name] = ca_map.get((cls.id, sub.id), "")
+            data_list.append(row)
 
     df = pd.DataFrame(data_list)
     column_order = ["班级名称", "人数", "班主任"] + [s.name for s in subjects]
@@ -947,18 +1070,22 @@ def export_course_assignments_excel():
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="任课总表")
+        sheet_name = "任课导入模板" if mode == "template" else "任课信息备份"
+        df.to_excel(writer, index=False, sheet_name=sheet_name)
 
     output.seek(0)
-    return output, "任课分配表(导入模板_备份).xlsx"
+    prefix = f"{academic_year}学年_" if academic_year else ""
+    if mode == "template":
+        return output, f"{prefix}任课分配导入模板.xlsx"
+    return output, f"{prefix}任课分配信息备份.xlsx"
 
 
-def export_teachers_excel(academic_year=None):
+def export_teachers_excel(academic_year=None, mode="backup"):
+    mode = _normalize_export_mode(mode)
     current_year = datetime.now().year
     default_year = current_year if datetime.now().month >= 9 else current_year - 1
     target_year = academic_year or default_year
 
-    teachers = Teacher.query.all()
     columns = [
         "工号",
         "姓名",
@@ -974,59 +1101,64 @@ def export_teachers_excel(academic_year=None):
     ]
 
     data_list = []
-    for t in teachers:
-        user = User.query.get(t.user_id)
-        username = user.username if user else ""
+    if mode == "backup":
+        teachers = Teacher.query.all()
+        for t in teachers:
+            user = User.query.get(t.user_id)
+            username = user.username if user else ""
 
-        ht_list = [
-            h.class_info.full_name
-            for h in t.head_teacher_assigns
-            if h.class_info and h.academic_year == target_year
-        ]
-        gl_list = [
-            f"{g.entry_year}级"
-            for g in t.grade_leader_assigns
-            if g.academic_year == target_year
-        ]
-        sgl_list = [
-            s.subject.name
-            for s in t.subject_group_assigns
-            if s.subject and s.academic_year == target_year
-        ]
+            ht_list = [
+                h.class_info.full_name
+                for h in t.head_teacher_assigns
+                if h.class_info and h.academic_year == target_year
+            ]
+            gl_list = [
+                f"{g.entry_year}级"
+                for g in t.grade_leader_assigns
+                if g.academic_year == target_year
+            ]
+            sgl_list = [
+                s.subject.name
+                for s in t.subject_group_assigns
+                if s.subject and s.academic_year == target_year
+            ]
 
-        pgl_list = []
-        for p in t.prep_group_assigns:
-            if p.subject and p.academic_year == target_year:
-                pgl_list.append(f"{p.entry_year}级{p.subject.name}")
+            pgl_list = []
+            for p in t.prep_group_assigns:
+                if p.subject and p.academic_year == target_year:
+                    pgl_list.append(f"{p.entry_year}级{p.subject.name}")
 
-        course_list = []
-        for c in t.course_assignments:
-            if c.class_info and c.subject and c.academic_year == target_year:
-                course_list.append(f"{c.class_info.full_name}-{c.subject.name}")
+            course_list = []
+            for c in t.course_assignments:
+                if c.class_info and c.subject and c.academic_year == target_year:
+                    course_list.append(f"{c.class_info.full_name}-{c.subject.name}")
 
-        data_list.append(
-            {
-                "工号": username,
-                "姓名": t.name,
-                "性别": t.gender,
-                "状态": t.status,
-                "电话": t.phone,
-                "职称": t.job_title,
-                "班主任分配": "，".join(ht_list),
-                "级长分配": "，".join(gl_list),
-                "科组长分配": "，".join(sgl_list),
-                "备课组长分配": "，".join(pgl_list),
-                "任教分配": "，".join(course_list),
-            }
-        )
+            data_list.append(
+                {
+                    "工号": username,
+                    "姓名": t.name,
+                    "性别": t.gender,
+                    "状态": t.status,
+                    "电话": t.phone,
+                    "职称": t.job_title,
+                    "班主任分配": "，".join(ht_list),
+                    "级长分配": "，".join(gl_list),
+                    "科组长分配": "，".join(sgl_list),
+                    "备课组长分配": "，".join(pgl_list),
+                    "任教分配": "，".join(course_list),
+                }
+            )
 
     df = pd.DataFrame(data_list, columns=columns)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name=f"{target_year}学年教师信息")
+        sheet_name = f"{target_year}学年教师模板" if mode == "template" else f"{target_year}学年教师信息"
+        df.to_excel(writer, index=False, sheet_name=sheet_name)
 
     output.seek(0)
-    return output, f"{target_year}学年_教师信息表(备份).xlsx"
+    if mode == "template":
+        return output, f"{target_year}学年_教师信息导入模板.xlsx"
+    return output, f"{target_year}学年_教师信息表_信息备份.xlsx"
 
 
 def build_score_import_template(entry_year, class_ids, subject_ids, exam_name=None):

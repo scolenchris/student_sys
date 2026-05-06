@@ -34,7 +34,11 @@ def import_students_excel():
 @admin_bp.route("/students/export", methods=["GET"])
 def export_students():
     class_id = request.args.get("class_id", type=int)
-    output, filename = excel_service.export_students_excel(class_id)
+    mode = request.args.get("mode", default="backup", type=str)
+    try:
+        output, filename = excel_service.export_students_excel(class_id, mode=mode)
+    except ValueError as e:
+        return jsonify({"msg": str(e)}), 400
     return send_file(
         output,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -57,7 +61,13 @@ def import_teachers_excel():
 @admin_bp.route("/teachers/export", methods=["GET"])
 def export_teachers():
     academic_year = request.args.get("academic_year", type=int)
-    output, filename = excel_service.export_teachers_excel(academic_year)
+    mode = request.args.get("mode", default="backup", type=str)
+    try:
+        output, filename = excel_service.export_teachers_excel(
+            academic_year, mode=mode
+        )
+    except ValueError as e:
+        return jsonify({"msg": str(e)}), 400
     return send_file(
         output,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -80,8 +90,12 @@ def import_course_assignments():
 
 @admin_bp.route("/assignments/export", methods=["GET"])
 def export_course_assignments():
+    academic_year = request.args.get("academic_year", type=int)
+    mode = request.args.get("mode", default="backup", type=str)
     try:
-        output, filename = excel_service.export_course_assignments_excel()
+        output, filename = excel_service.export_course_assignments_excel(
+            academic_year=academic_year, mode=mode
+        )
     except ValueError as e:
         return jsonify({"msg": str(e)}), 400
 

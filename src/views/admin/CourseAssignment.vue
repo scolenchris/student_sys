@@ -39,10 +39,16 @@
             <el-icon style="margin-right: 5px"><Plus /></el-icon>
             新增任课分配
           </el-button>
-          <el-button type="warning" @click="handleExport">
-            <el-icon style="margin-right: 5px"><Download /></el-icon>
-            下载任课表模板
-          </el-button>
+          <el-button-group>
+            <el-button type="warning" @click="handleExport('template')">
+              <el-icon style="margin-right: 5px"><Document /></el-icon>
+              下载任课表模板
+            </el-button>
+            <el-button type="success" plain @click="handleExport('backup')">
+              <el-icon style="margin-right: 5px"><Download /></el-icon>
+              信息备份导出
+            </el-button>
+          </el-button-group>
         </div>
       </div>
     </template>
@@ -172,7 +178,7 @@
 import { ref, onMounted, reactive, computed } from "vue";
 import * as adminApi from "../../api/admin";
 import { ElMessage } from "element-plus";
-import { Upload, Plus, Download } from "@element-plus/icons-vue";
+import { Upload, Plus, Document, Download } from "@element-plus/icons-vue";
 
 // 学年按 9 月切换。
 const now = new Date();
@@ -302,14 +308,21 @@ const handleImport = async (param) => {
   }
 };
 
-const handleExport = async () => {
+const handleExport = async (mode) => {
   try {
-    const res = await adminApi.exportCourseAssignments();
+    const res = await adminApi.exportCourseAssignments({
+      academic_year: currentAcademicYear.value,
+      mode,
+    });
 
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", "任课分配表(可直接导入).xlsx");
+    const fileName =
+      mode === "template"
+        ? `${currentAcademicYear.value}学年_任课分配导入模板.xlsx`
+        : `${currentAcademicYear.value}学年_任课分配信息备份.xlsx`;
+    link.setAttribute("download", fileName);
 
     document.body.appendChild(link);
     link.click();

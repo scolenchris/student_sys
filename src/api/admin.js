@@ -91,9 +91,9 @@ export const importCourseAssignmentsExcel = (formData) =>
     },
   });
 
-export const exportCourseAssignments = () =>
+export const exportCourseAssignments = (params) =>
   api.get("/assignments/export", {
-    // 以二进制流下载文件。
+    params,
     responseType: "blob",
   });
 
@@ -113,6 +113,10 @@ export const getStudentCertificate = (studentId) =>
 // 班级统计
 export const getClassScoreStats = (data) =>
   api.post("/stats/class_score_stats", data);
+export const exportClassScoreStatsExcel = (data) =>
+  api.post("/stats/class_score_stats_export", data, {
+    responseType: "blob",
+  });
 
 // 教师统计
 export const getTeacherScoreStats = (data) =>
