@@ -4,6 +4,7 @@ import AdminDashboard from "../views/admin/Dashboard.vue";
 import TeacherDashboard from "../views/teacher/Dashboard.vue";
 import ChangePassword from "../views/ChangePassword.vue";
 import { ElMessage } from "element-plus";
+import { clearAuthStorageKeepLayoutSize } from "../composables/useLayoutSize";
 
 const routes = [
   { path: "/", name: "Login", component: Login },
@@ -118,7 +119,7 @@ router.beforeEach((to, from, next) => {
   let token = localStorage.getItem("access_token");
 
   if ((role && !token) || (!role && token)) {
-    localStorage.clear();
+    clearAuthStorageKeepLayoutSize();
     role = null;
     token = null;
   }

@@ -3,5 +3,7 @@
 </template>
 
 <script setup>
-// 这里暂时不需要逻辑
+import { initLayoutSize } from "./composables/useLayoutSize";
+
+initLayoutSize();
 </script>

@@ -3,6 +3,7 @@
     <div class="shape shape-a"></div>
     <div class="shape shape-b"></div>
     <div class="shape shape-c"></div>
+    <LayoutSizeSwitcher class="login-size-switcher" />
 
     <div class="login-shell">
       <section class="hero-panel">
@@ -131,6 +132,7 @@ import { ref, reactive, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { loginApi, registerApi, getRegisterConfig } from "../api/auth";
 import { ElMessage } from "element-plus";
+import LayoutSizeSwitcher from "../components/LayoutSizeSwitcher.vue";
 
 const router = useRouter();
 const isRegister = ref(false);
@@ -340,6 +342,13 @@ const handleSubmit = async () => {
   z-index: 1;
 }
 
+.login-size-switcher {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+}
+
 .hero-panel {
   background: linear-gradient(160deg, #0f4f84 0%, #1473a6 55%, #1790a9 100%);
   border-radius: 18px;
@@ -350,7 +359,7 @@ const handleSubmit = async () => {
 
 .hero-tag {
   display: inline-block;
-  font-size: 12px;
+  font-size: var(--app-font-size-small);
   letter-spacing: 1px;
   margin: 0;
   padding: 4px 10px;
@@ -360,7 +369,7 @@ const handleSubmit = async () => {
 
 .hero-panel h1 {
   margin: 14px 0 10px;
-  font-size: 34px;
+  font-size: var(--app-font-size-hero);
   line-height: 1.2;
 }
 
@@ -389,7 +398,7 @@ const handleSubmit = async () => {
 .card-header p {
   margin: 8px 0 0;
   color: #6b849f;
-  font-size: 13px;
+  font-size: var(--app-font-size-small);
 }
 
 .browser-meta {
@@ -400,7 +409,7 @@ const handleSubmit = async () => {
 .browser-recommend {
   margin-top: 8px;
   color: #4f6883;
-  font-size: 12px;
+  font-size: var(--app-font-size-small);
   line-height: 1.7;
 }
 
@@ -426,7 +435,7 @@ const handleSubmit = async () => {
 
 .helper-line {
   margin-top: 14px;
-  font-size: 14px;
+  font-size: var(--app-font-size-base);
   text-align: center;
 }
 

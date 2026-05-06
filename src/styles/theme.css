@@ -1,5 +1,20 @@
 :root {
   --app-font: "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --app-font-size-base: 14px;
+  --app-font-size-small: 13px;
+  --app-font-size-title: 20px;
+  --app-font-size-hero: 34px;
+  --app-line-height: 1.55;
+  --app-component-size-small: 24px;
+  --app-component-size: 32px;
+  --app-component-size-large: 40px;
+  --app-header-height: 68px;
+  --app-brand-height: 72px;
+  --app-main-padding: 20px;
+  --app-menu-item-height: 44px;
+  --app-admin-aside-width: 270px;
+  --app-teacher-aside-width: 240px;
+  --app-aside-collapsed-width: 82px;
   --brand-primary: #1f78cf;
   --brand-primary-soft: #d8ebff;
   --brand-success: #2f9e74;
@@ -8,6 +23,51 @@
   --brand-text-light: #607896;
   --surface-card: #ffffff;
   --surface-bg: #f3f7fd;
+  --el-font-size-base: var(--app-font-size-base);
+  --el-font-size-small: var(--app-font-size-small);
+  --el-font-size-extra-small: var(--app-font-size-small);
+  --el-font-size-medium: var(--app-font-size-title);
+  --el-font-size-large: var(--app-font-size-title);
+  --el-font-size-extra-large: var(--app-font-size-title);
+  --el-component-size-small: var(--app-component-size-small);
+  --el-component-size: var(--app-component-size);
+  --el-component-size-large: var(--app-component-size-large);
+  --el-menu-item-height: var(--app-menu-item-height);
+  --el-menu-sub-item-height: var(--app-menu-item-height);
+}
+
+:root[data-layout-size="large"] {
+  --app-font-size-base: 16px;
+  --app-font-size-small: 14px;
+  --app-font-size-title: 22px;
+  --app-font-size-hero: 38px;
+  --app-component-size-small: 28px;
+  --app-component-size: 36px;
+  --app-component-size-large: 44px;
+  --app-header-height: 76px;
+  --app-brand-height: 80px;
+  --app-main-padding: 24px;
+  --app-menu-item-height: 50px;
+  --app-admin-aside-width: 292px;
+  --app-teacher-aside-width: 260px;
+  --app-aside-collapsed-width: 90px;
+}
+
+:root[data-layout-size="xlarge"] {
+  --app-font-size-base: 18px;
+  --app-font-size-small: 16px;
+  --app-font-size-title: 24px;
+  --app-font-size-hero: 42px;
+  --app-component-size-small: 32px;
+  --app-component-size: 40px;
+  --app-component-size-large: 48px;
+  --app-header-height: 84px;
+  --app-brand-height: 88px;
+  --app-main-padding: 28px;
+  --app-menu-item-height: 56px;
+  --app-admin-aside-width: 320px;
+  --app-teacher-aside-width: 286px;
+  --app-aside-collapsed-width: 98px;
 }
 
 * {
@@ -23,6 +83,8 @@ body,
 body {
   margin: 0;
   font-family: var(--app-font);
+  font-size: var(--app-font-size-base);
+  line-height: var(--app-line-height);
   color: var(--brand-text);
   background:
     radial-gradient(circle at 12% 20%, #f5fbff 0, #f5fbff 18%, transparent 40%),
@@ -40,6 +102,7 @@ a {
   border-radius: 14px;
   border: 1px solid #dbe8f7;
   box-shadow: 0 8px 18px rgba(20, 60, 94, 0.07);
+  font-size: var(--app-font-size-base);
 }
 
 .el-card__header {
@@ -50,6 +113,7 @@ a {
   --el-table-border-color: #d9e5f4;
   --el-table-header-bg-color: #f2f7ff;
   --el-table-row-hover-bg-color: #eef5ff;
+  font-size: var(--app-font-size-base);
 }
 
 .el-table th.el-table__cell {
@@ -63,17 +127,39 @@ a {
 .el-button {
   border-radius: 10px;
   font-weight: 600;
+  font-size: var(--app-font-size-base);
 }
 
 .el-input__wrapper,
 .el-textarea__inner,
 .el-select__wrapper {
   border-radius: 10px;
+  font-size: var(--app-font-size-base);
 }
 
 .el-form-item__label {
   color: #4f6a87;
   font-weight: 600;
+  font-size: var(--app-font-size-base);
+}
+
+.el-radio,
+.el-checkbox,
+.el-link,
+.el-pagination,
+.el-message,
+.el-message-box,
+.el-dialog {
+  font-size: var(--app-font-size-base);
+}
+
+.el-menu-item,
+.el-sub-menu__title {
+  font-size: var(--app-font-size-base);
+}
+
+.el-table .cell {
+  line-height: var(--app-line-height);
 }
 
 ::-webkit-scrollbar {

@@ -1,6 +1,6 @@
 <template>
   <el-container class="teacher-shell">
-    <el-aside :width="isCollapse ? '82px' : '240px'" class="teacher-aside">
+    <el-aside :width="asideWidth" class="teacher-aside">
       <div class="teacher-logo">
         <div class="logo-mark">T</div>
         <span v-show="!isCollapse">教师工作台</span>
@@ -35,6 +35,7 @@
           <strong>教师端</strong>
         </div>
         <div class="right">
+          <LayoutSizeSwitcher />
           <el-button text @click="router.push('/change-password')">
             <el-icon><Lock /></el-icon>
             修改密码
@@ -54,7 +55,7 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   DataLine,
@@ -65,13 +66,20 @@ import {
   Reading,
   SwitchButton,
 } from "@element-plus/icons-vue";
+import LayoutSizeSwitcher from "../../components/LayoutSizeSwitcher.vue";
+import { clearAuthStorageKeepLayoutSize } from "../../composables/useLayoutSize";
 
 const router = useRouter();
 const route = useRoute();
 const isCollapse = ref(false);
+const asideWidth = computed(() =>
+  isCollapse.value
+    ? "var(--app-aside-collapsed-width)"
+    : "var(--app-teacher-aside-width)",
+);
 
 const logout = () => {
-  localStorage.clear();
+  clearAuthStorageKeepLayoutSize();
   router.push("/");
 };
 </script>
@@ -88,7 +96,7 @@ const logout = () => {
 }
 
 .teacher-logo {
-  height: 70px;
+  height: var(--app-brand-height);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -118,6 +126,8 @@ const logout = () => {
   color: #d4e3f8;
   margin: 8px 10px;
   border-radius: 10px;
+  height: var(--app-menu-item-height);
+  line-height: var(--app-menu-item-height);
 }
 
 .teacher-menu :deep(.el-menu-item:hover) {
@@ -131,7 +141,7 @@ const logout = () => {
 }
 
 .teacher-header {
-  height: 68px;
+  height: var(--app-header-height);
   background: rgba(255, 255, 255, 0.92);
   border-bottom: 1px solid #e7edf7;
   display: flex;
@@ -144,11 +154,12 @@ const logout = () => {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .teacher-main {
-  height: calc(100vh - 68px);
+  height: calc(100vh - var(--app-header-height));
   overflow: auto;
-  padding: 20px;
+  padding: var(--app-main-padding);
 }
 </style>

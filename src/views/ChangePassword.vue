@@ -2,6 +2,7 @@
   <div class="pwd-container">
     <div class="halo halo-a"></div>
     <div class="halo halo-b"></div>
+    <LayoutSizeSwitcher class="pwd-size-switcher" />
     <el-card class="pwd-card">
       <template #header>
         <div class="title-wrap">
@@ -50,6 +51,8 @@ import { reactive } from "vue";
 import { useRouter } from "vue-router";
 import { changePasswordApi } from "../api/auth";
 import { ElMessage } from "element-plus";
+import LayoutSizeSwitcher from "../components/LayoutSizeSwitcher.vue";
+import { clearAuthStorageKeepLayoutSize } from "../composables/useLayoutSize";
 
 const router = useRouter();
 const form = reactive({
@@ -72,7 +75,7 @@ const handleSubmit = async () => {
       new_password: form.new_password,
     });
     ElMessage.success("密码修改成功，请重新登录");
-    localStorage.clear();
+    clearAuthStorageKeepLayoutSize();
     router.push("/");
   } catch (err) {
     ElMessage.error(err.response?.data?.msg || "修改失败");
@@ -98,6 +101,13 @@ const handleSubmit = async () => {
   z-index: 1;
 }
 
+.pwd-size-switcher {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+}
+
 .title-wrap {
   text-align: center;
 }
@@ -105,13 +115,13 @@ const handleSubmit = async () => {
 .title-wrap h2 {
   margin: 0;
   color: #dd4a65;
-  font-size: 22px;
+  font-size: var(--app-font-size-title);
 }
 
 .title-wrap p {
   margin: 8px 0 0;
   color: #6f88a4;
-  font-size: 13px;
+  font-size: var(--app-font-size-small);
 }
 
 .halo {

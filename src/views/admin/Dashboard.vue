@@ -53,6 +53,7 @@
           <h3 class="page-title">{{ currentPageTitle }}</h3>
         </div>
         <div class="header-right">
+          <LayoutSizeSwitcher />
           <span class="welcome">你好，{{ username }}</span>
           <el-button text @click="goChangePassword">
             <el-icon><Lock /></el-icon>
@@ -90,6 +91,8 @@ import {
   School,
   SwitchButton,
 } from "@element-plus/icons-vue";
+import LayoutSizeSwitcher from "../../components/LayoutSizeSwitcher.vue";
+import { clearAuthStorageKeepLayoutSize } from "../../composables/useLayoutSize";
 
 const router = useRouter();
 const route = useRoute();
@@ -150,7 +153,11 @@ const pageTitleMap = menuGroups
     return map;
   }, {});
 
-const asideWidth = computed(() => (isCollapse.value ? "82px" : "270px"));
+const asideWidth = computed(() =>
+  isCollapse.value
+    ? "var(--app-aside-collapsed-width)"
+    : "var(--app-admin-aside-width)",
+);
 const activePath = computed(() => route.path);
 const openedGroups = computed(() =>
   isCollapse.value ? [] : menuGroups.map((group) => group.key),
@@ -178,7 +185,7 @@ const logout = async () => {
     return;
   }
 
-  localStorage.clear();
+  clearAuthStorageKeepLayoutSize();
   router.push("/");
 };
 </script>
@@ -196,7 +203,7 @@ const logout = async () => {
 }
 
 .brand {
-  height: 72px;
+  height: var(--app-brand-height);
   padding: 0 14px;
   display: flex;
   align-items: center;
@@ -231,11 +238,11 @@ const logout = async () => {
 .brand-en {
   color: #96b8dc;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--app-font-size-small);
 }
 
 .menu-scroll {
-  height: calc(100vh - 72px);
+  height: calc(100vh - var(--app-brand-height));
 }
 
 .admin-menu {
@@ -253,8 +260,8 @@ const logout = async () => {
   margin: 6px 10px;
   border-radius: 10px;
   color: #d4e3f8;
-  height: 44px;
-  line-height: 44px;
+  height: var(--app-menu-item-height);
+  line-height: var(--app-menu-item-height);
 }
 
 .admin-menu :deep(.el-sub-menu__title:hover),
@@ -273,7 +280,7 @@ const logout = async () => {
 }
 
 .admin-header {
-  height: 68px;
+  height: var(--app-header-height);
   padding: 0 20px;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(8px);
@@ -290,12 +297,12 @@ const logout = async () => {
 }
 
 .collapse-btn {
-  font-size: 20px;
+  font-size: var(--app-font-size-title);
 }
 
 .page-title {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--app-font-size-title);
   color: #10385d;
   letter-spacing: 0.5px;
 }
@@ -304,17 +311,19 @@ const logout = async () => {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .welcome {
   color: #4c6684;
-  font-size: 14px;
+  font-size: var(--app-font-size-base);
 }
 
 .admin-main {
-  height: calc(100vh - 68px);
+  height: calc(100vh - var(--app-header-height));
   overflow: auto;
-  padding: 20px;
+  padding: var(--app-main-padding);
 }
 
 .fade-slide-enter-active,
