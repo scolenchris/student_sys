@@ -9,16 +9,15 @@ if basedir not in sys.path:
 
 try:
     from app import create_app, db
+    from app.license_guard import LicenseError
     from app.models import User
 except ModuleNotFoundError as e:
     print(f"当前搜索路径: {sys.path}")
     input(f"导入错误: {e}\n按回车键退出...")  # 防止闪退
     sys.exit(1)
 
-app = create_app()
 
-
-def initialize_system():
+def initialize_system(app):
     """
     冷启动初始化：
     1) 自动创建数据库表
@@ -59,10 +58,11 @@ def initialize_system():
 if __name__ == "__main__":
 
     try:
-        initialize_system()
+        app = create_app()
+        initialize_system(app)
 
         cpu_count = os.cpu_count() or 2
-        default_threads = max(2, min(cpu_count, 4))
+        default_threads = max(4, min(cpu_count, 6))
         waitress_threads = int(os.environ.get("WAITRESS_THREADS", default_threads))
 
         print("系统启动中... 请访问 http://localhost:5173 进行调试")
@@ -78,8 +78,13 @@ if __name__ == "__main__":
         # 使用 Waitress 作为生产/联调启动方式
         serve(app, host="0.0.0.0", port=5173, threads=waitress_threads)
 
+    except LicenseError as e:
+        print("\n" + "!" * 60)
+        print(f"【授权失败】{e}")
+        print("请检查授权凭证文件后重新启动系统。")
+        print("!" * 60 + "\n")
     except OSError as e:
-        if e.winerror == 10048:
+        if getattr(e, "winerror", None) == 10048:
             print("\n" + "!" * 60)
             print("【启动失败】端口 5173 被占用！")
             print("原因：上一次运行的程序可能没有完全关闭。")
@@ -93,4 +98,7 @@ if __name__ == "__main__":
         traceback.print_exc()
     finally:
         # 避免 Windows 双击启动时窗口闪退，便于查看错误信息
-        input("\n程序已结束，按回车键关闭窗口...")
+        try:
+            input("\n程序已结束，按回车键关闭窗口...")
+        except EOFError:
+            pass

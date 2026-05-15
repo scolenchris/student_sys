@@ -7,6 +7,7 @@ from sqlalchemy import text
 from flask import jsonify
 import os
 import sys
+from .license_guard import LicenseError, validate_license
 
 
 def _optimize_sqlite_runtime(app):
@@ -65,6 +66,12 @@ def _optimize_sqlite_runtime(app):
 
 
 def create_app(config_class=Config):
+    license_info = validate_license()
+    print(
+        ">> [授权] 校验通过: "
+        f"{license_info['customer']}，有效期 {license_info['valid_from']} 至 {license_info['valid_until']}"
+    )
+
     # 优先使用当前目录或 exe 目录的 dist，兼容源码运行和打包运行。
     cwd_dist = os.path.join(os.getcwd(), "dist")
     exe_dist = os.path.join(os.path.dirname(sys.executable), "dist")
@@ -106,6 +113,16 @@ def create_app(config_class=Config):
             return jsonify({"msg": "当前提交人数过多，系统繁忙，请稍后重试！"}), 500
 
         return jsonify({"msg": "数据库操作异常"}), 500
+
+    @app.before_request
+    def enforce_license():
+        try:
+            validate_license()
+        except LicenseError as e:
+            msg = str(e) or "授权校验失败"
+            if request.path.startswith("/api/"):
+                return jsonify({"msg": msg}), 403
+            return msg, 403
 
     # 注册蓝图
     from .routes.auth import auth_bp
