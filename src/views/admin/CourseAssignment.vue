@@ -179,18 +179,15 @@ import { ref, onMounted, reactive, computed } from "vue";
 import * as adminApi from "../../api/admin";
 import { ElMessage } from "element-plus";
 import { Upload, Plus, Document, Download } from "@element-plus/icons-vue";
+import {
+  buildAcademicYearOptions,
+  getDefaultAcademicYear,
+} from "../../utils/academicYear";
 
-// 学年按 9 月切换。
-const now = new Date();
-const defaultYear =
-  now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+const defaultYear = getDefaultAcademicYear();
 const currentAcademicYear = ref(defaultYear);
 
-const academicYearOptions = computed(() => {
-  const years = [];
-  for (let i = -2; i < 3; i++) years.push(defaultYear + i);
-  return years.sort((a, b) => b - a);
-});
+const academicYearOptions = computed(() => buildAcademicYearOptions(defaultYear));
 
 const assignments = ref([]);
 const total = ref(0);

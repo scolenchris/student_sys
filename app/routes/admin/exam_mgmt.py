@@ -1,11 +1,11 @@
-from datetime import datetime
-
 from flask import g, jsonify, request
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from app.models import ClassInfo, ExamTask, Score, Student, Subject, db
 from app.services.audit_service import append_score_update_audit_log
 from app.services.progress_service import calc_exam_task_progress
+from app.utils.academic_year import get_default_academic_year
 
 from . import admin_bp
 
@@ -76,7 +76,7 @@ def get_exam_tasks():
 @admin_bp.route("/exam_tasks", methods=["POST"])
 def add_exam_task():
     data = request.get_json()
-    academic_year = data.get("academic_year", datetime.now().year)
+    academic_year = data.get("academic_year", get_default_academic_year())
 
     exists = ExamTask.query.filter_by(
         academic_year=academic_year,
@@ -321,6 +321,9 @@ def save_admin_scores():
 
     try:
         db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"msg": "成绩保存失败：该学生该考试已存在成绩记录，请刷新后重试"}), 409
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": f"数据库写入失败: {str(e)}"}), 500

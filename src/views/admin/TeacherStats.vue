@@ -180,6 +180,10 @@ import {
 } from "../../api/admin";
 import { ElMessage } from "element-plus";
 import { Search, Download } from "@element-plus/icons-vue";
+import {
+  buildAcademicYearOptions,
+  getDefaultAcademicYear,
+} from "../../utils/academicYear";
 
 const loading = ref(false);
 const exporting = ref(false);
@@ -187,10 +191,7 @@ const tableData = ref([]);
 const allClasses = ref([]);
 const examNameOptions = ref([]);
 
-// 学年按 8 月切换：8 月前视为上一学年，8 月及以后视为当前年。
-const now = new Date();
-const currentYear =
-  now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+const currentYear = getDefaultAcademicYear();
 
 const query = reactive({
   academic_year: currentYear,
@@ -207,11 +208,7 @@ const displayTableData = computed(() => {
   return tableData.value.filter((item) => String(item.name || "").includes(kw));
 });
 
-const academicYearOptions = computed(() => {
-  const years = [];
-  for (let i = -2; i < 3; i++) years.push(currentYear + i);
-  return years.sort((a, b) => b - a);
-});
+const academicYearOptions = computed(() => buildAcademicYearOptions(currentYear));
 
 const gradeOptions = computed(() => {
   if (!allClasses.value.length) return [];

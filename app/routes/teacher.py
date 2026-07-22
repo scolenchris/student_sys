@@ -3,6 +3,7 @@ import pandas as pd
 import io
 from urllib.parse import quote
 from sqlalchemy import distinct, func, or_, tuple_
+from sqlalchemy.exc import IntegrityError
 from collections import defaultdict
 
 from app.auth_utils import require_auth
@@ -814,6 +815,9 @@ def save_scores():
 
     try:
         db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"msg": "成绩保存失败：该学生该考试已存在成绩记录，请刷新后重试"}), 409
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": f"数据库写入失败: {str(e)}"}), 500
@@ -1329,6 +1333,9 @@ def import_scores():
 
     try:
         db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"msg": "成绩导入失败：存在重复成绩记录，请刷新后重试"}), 409
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": f"数据库写入失败: {str(e)}"}), 500

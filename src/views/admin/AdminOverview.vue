@@ -244,10 +244,12 @@ import {
   getSubjects,
   getTeachers,
 } from "../../api/admin";
+import {
+  buildAcademicYearOptions,
+  getDefaultAcademicYear,
+} from "../../utils/academicYear";
 
-const now = new Date();
-const currentYear = now.getFullYear();
-const defaultAcademicYear = now.getMonth() >= 8 ? currentYear : currentYear - 1;
+const defaultAcademicYear = getDefaultAcademicYear();
 
 const loading = ref(false);
 const selectedAcademicYear = ref(defaultAcademicYear);
@@ -280,13 +282,9 @@ const summary = reactive({
 
 const palette = ["#2f89ff", "#33c08a", "#f8b653", "#fa7b61", "#5d7fdb", "#8c65d3"];
 
-const academicYearOptions = computed(() => {
-  const years = [];
-  for (let i = -2; i <= 2; i += 1) {
-    years.push(defaultAcademicYear + i);
-  }
-  return years.sort((a, b) => b - a);
-});
+const academicYearOptions = computed(() =>
+  buildAcademicYearOptions(defaultAcademicYear)
+);
 
 const maxGradeValue = computed(() => {
   if (gradeDistribution.value.length === 0) return 1;

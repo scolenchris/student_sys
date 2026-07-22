@@ -378,24 +378,20 @@ import {
 } from "../../api/admin";
 import { ElMessage } from "element-plus";
 import { Delete, Document, Download, Upload, Search } from "@element-plus/icons-vue";
+import {
+  buildAcademicYearOptions,
+  getDefaultAcademicYear,
+} from "../../utils/academicYear";
 
-// 学年按 9 月切换。
-const now = new Date();
-const currentRealYear = now.getFullYear();
-const defaultAcademicYear =
-  now.getMonth() >= 8 ? currentRealYear : currentRealYear - 1;
+const defaultAcademicYear = getDefaultAcademicYear();
 
 const currentAcademicYear = ref(defaultAcademicYear);
 const filterStatus = ref("在职");
 const keyword = ref("");
 
-const academicYearOptions = computed(() => {
-  const years = [];
-  for (let i = -2; i < 3; i++) {
-    years.push(defaultAcademicYear + i);
-  }
-  return years.sort((a, b) => b - a);
-});
+const academicYearOptions = computed(() =>
+  buildAcademicYearOptions(defaultAcademicYear)
+);
 
 const teachers = ref([]);
 const loading = ref(false);

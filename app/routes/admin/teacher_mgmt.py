@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from flask import jsonify, request
 from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
@@ -14,6 +12,7 @@ from app.models import (
     User,
     db,
 )
+from app.utils.academic_year import get_default_academic_year
 from app.utils.helpers import _apply_teacher_status_to_account
 
 from . import admin_bp
@@ -21,9 +20,7 @@ from . import admin_bp
 
 @admin_bp.route("/teachers", methods=["GET"])
 def get_teachers():
-    current_year = datetime.now().year
-    default_year = current_year if datetime.now().month >= 9 else current_year - 1
-
+    default_year = get_default_academic_year()
     academic_year = request.args.get("academic_year", default_year, type=int)
     status_filter = request.args.get("status", "在职")
     keyword = (request.args.get("keyword") or "").strip()

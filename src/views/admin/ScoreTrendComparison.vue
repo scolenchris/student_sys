@@ -272,6 +272,10 @@ import {
 } from "../../api/admin";
 import { ElMessage } from "element-plus";
 import { Search, Download } from "@element-plus/icons-vue";
+import {
+  buildAcademicYearOptions,
+  getDefaultAcademicYear,
+} from "../../utils/academicYear";
 
 const loading = ref(false);
 const exporting = ref(false);
@@ -287,9 +291,7 @@ const tableData = ref([]);
 const warnings = ref([]);
 const total = ref(0);
 
-const now = new Date();
-const defaultAcademicYear =
-  now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+const defaultAcademicYear = getDefaultAcademicYear();
 
 const query = reactive({
   academic_year: defaultAcademicYear,
@@ -302,13 +304,9 @@ const query = reactive({
   page_size: 20,
 });
 
-const academicYearOptions = computed(() => {
-  const years = [];
-  for (let i = -2; i < 3; i += 1) {
-    years.push(defaultAcademicYear + i);
-  }
-  return years.sort((a, b) => b - a);
-});
+const academicYearOptions = computed(() =>
+  buildAcademicYearOptions(defaultAcademicYear)
+);
 
 const gradeOptions = computed(() => {
   if (!allClassOptions.value.length) return [];

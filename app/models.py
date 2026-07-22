@@ -2,6 +2,7 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import UniqueConstraint  # 引入联合唯一约束
+from app.utils.academic_year import get_default_academic_year
 
 db = SQLAlchemy()
 
@@ -98,7 +99,9 @@ class ExamTask(db.Model):
     entry_year = db.Column(db.Integer, nullable=False)  # 针对哪个年级 (如2023级)
 
     # 所属学年 (如 2024 表示 2024-2025学年)
-    academic_year = db.Column(db.Integer, nullable=False, default=datetime.now().year)
+    academic_year = db.Column(
+        db.Integer, nullable=False, default=get_default_academic_year
+    )
 
     subject_id = db.Column(db.Integer, db.ForeignKey("subjects.id"), nullable=False)
     full_score = db.Column(db.Float, default=100.0)
@@ -240,6 +243,11 @@ class Score(db.Model):
     term = db.Column(db.String(20))  # 保留兼容
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    # 同一个学生在同一个考试任务中只能有一条成绩记录。
+    __table_args__ = (
+        UniqueConstraint("student_id", "exam_task_id", name="uq_score_student_exam_task"),
+    )
 
 
 class ImportBatch(db.Model):

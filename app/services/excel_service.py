@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 
 import pandas as pd
+from sqlalchemy.exc import IntegrityError
 
 from app.models import (
     ClassInfo,
@@ -20,6 +21,7 @@ from app.models import (
     User,
     db,
 )
+from app.utils.academic_year import get_default_academic_year
 from app.utils.helpers import (
     _apply_teacher_status_to_account,
     _create_import_batch,
@@ -1082,9 +1084,7 @@ def export_course_assignments_excel(academic_year=None, mode="backup"):
 
 def export_teachers_excel(academic_year=None, mode="backup"):
     mode = _normalize_export_mode(mode)
-    current_year = datetime.now().year
-    default_year = current_year if datetime.now().month >= 9 else current_year - 1
-    target_year = academic_year or default_year
+    target_year = academic_year or get_default_academic_year()
 
     columns = [
         "工号",
@@ -1478,6 +1478,9 @@ def process_admin_scores_import(
             "logs": logs,
         }, 200
 
+    except IntegrityError:
+        db.session.rollback()
+        return {"msg": "数据库写入异常：存在重复成绩记录，请刷新后重试"}, 409
     except Exception as e:
         db.session.rollback()
         return {"msg": f"数据库写入异常: {str(e)}"}, 500

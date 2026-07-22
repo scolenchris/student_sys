@@ -57,6 +57,29 @@ def _resolve_pagination(data):
     return paged, page, page_size
 
 
+def _load_score_student_map(score_rows, base_students=None):
+    student_map = {s.id: s for s in (base_students or [])}
+    missing_ids = {
+        row.student_id
+        for row in score_rows
+        if row.student_id and row.student_id not in student_map
+    }
+    if missing_ids:
+        extra_students = Student.query.filter(Student.id.in_(missing_ids)).all()
+        student_map.update({s.id: s for s in extra_students})
+    return student_map
+
+
+def _resolve_score_class_id(score_row, student_map):
+    if score_row.class_id_snapshot:
+        return score_row.class_id_snapshot
+
+    student = student_map.get(score_row.student_id)
+    if not student:
+        return None
+    return student.class_id
+
+
 def build_class_report(class_id, term):
     if not class_id or not term:
         return {"subjects": [], "report": [], "subject_averages": {}}
@@ -167,12 +190,12 @@ def build_comprehensive_report(data):
     task_ids = [t.id for t in tasks]
     total_full_score = sum([t.full_score for t in tasks])
 
-    students = Student.query.filter(Student.class_id.in_(all_grade_class_ids)).all()
-    student_map = {s.id: s for s in students}
-
-    scores = Score.query.filter(
-        Score.exam_task_id.in_(task_ids), Score.student_id.in_(student_map.keys())
+    current_students = Student.query.filter(
+        Student.class_id.in_(all_grade_class_ids)
     ).all()
+
+    scores = Score.query.filter(Score.exam_task_id.in_(task_ids)).all()
+    student_map = _load_score_student_map(scores, current_students)
 
     stats_data = {}
 
@@ -185,21 +208,42 @@ def build_comprehensive_report(data):
     subject_name_map = {s.id: s.name for s in subjects}
     ordered_subject_names = [s.name for s in subjects]
 
-    for stu in students:
-        stats_data[stu.id] = {"obj": stu, "score_map": {}, "total": 0}
+    for stu in current_students:
+        stats_data[stu.id] = {
+            "obj": stu,
+            "rank_class_id": stu.class_id,
+            "score_map": {},
+            "total": 0,
+        }
 
     for sc in scores:
         sid = sc.student_id
-        if sid in stats_data:
-            subj_id = task_map.get(sc.exam_task_id)
-            subj_name = subject_name_map.get(subj_id)
-            if subj_name:
-                if sc.remark == "缺考":
-                    stats_data[sid]["score_map"][subj_name] = "缺考"
-                    stats_data[sid]["total"] += 0
-                else:
-                    stats_data[sid]["score_map"][subj_name] = sc.score
-                    stats_data[sid]["total"] += sc.score
+        stu = student_map.get(sid)
+        if not stu:
+            continue
+
+        rank_class_id = _resolve_score_class_id(sc, student_map)
+        if rank_class_id not in all_grade_class_ids:
+            continue
+
+        if sid not in stats_data:
+            stats_data[sid] = {
+                "obj": stu,
+                "rank_class_id": rank_class_id,
+                "score_map": {},
+                "total": 0,
+            }
+
+        stats_data[sid]["rank_class_id"] = rank_class_id
+        subj_id = task_map.get(sc.exam_task_id)
+        subj_name = subject_name_map.get(subj_id)
+        if subj_name:
+            if sc.remark == "缺考":
+                stats_data[sid]["score_map"][subj_name] = "缺考"
+                stats_data[sid]["total"] += 0
+            else:
+                stats_data[sid]["score_map"][subj_name] = sc.score
+                stats_data[sid]["total"] += sc.score
 
     result_list = list(stats_data.values())
 
@@ -226,7 +270,7 @@ def build_comprehensive_report(data):
 
     class_groups = {}
     for item in result_list:
-        cid = item["obj"].class_id
+        cid = item["rank_class_id"]
         if cid not in class_groups:
             class_groups[cid] = []
         class_groups[cid].append(item)
@@ -247,12 +291,13 @@ def build_comprehensive_report(data):
 
     for item in result_list:
         stu = item["obj"]
-        if stu.class_id in target_class_ids:
+        rank_class_id = item["rank_class_id"]
+        if rank_class_id in target_class_ids:
             final_output.append(
                 {
                     "student_id": stu.student_id,
                     "name": stu.name,
-                    "class_name": class_map.get(stu.class_id, "未知班级"),
+                    "class_name": class_map.get(rank_class_id, "未知班级"),
                     "status": stu.status,
                     "full_score": total_full_score,
                     "total": round(item["total"], 1),
@@ -378,20 +423,13 @@ def build_score_rank_trend_payload(data):
             payload.update({"total": 0, "page": page, "page_size": page_size})
         return payload, None
 
-    students = (
+    current_students = (
         Student.query.filter(
             Student.class_id.in_(all_grade_class_ids), Student.status == "在读"
         )
         .order_by(Student.student_id.asc())
         .all()
     )
-    if not students:
-        payload = {"subjects": [], "exams": [], "rows": [], "warnings": []}
-        if paged:
-            payload.update({"total": 0, "page": page, "page_size": page_size})
-        return payload, None
-
-    student_ids = [s.id for s in students]
 
     subjects = Subject.query.filter(Subject.id.in_(subject_ids)).all()
     subject_obj_map = {s.id: s for s in subjects}
@@ -473,26 +511,48 @@ def build_score_rank_trend_payload(data):
     all_task_ids = list(task_info_by_id.keys())
     score_map = {}
     class_snapshot_map = {}
+    student_default_class_map = {s.id: s.class_id for s in current_students}
+    student_map = {}
+    students = []
 
     if all_task_ids:
-        score_rows = Score.query.filter(
-            Score.exam_task_id.in_(all_task_ids), Score.student_id.in_(student_ids)
-        ).all()
+        score_rows = Score.query.filter(Score.exam_task_id.in_(all_task_ids)).all()
+        student_map = _load_score_student_map(score_rows, current_students)
 
+        eligible_score_student_ids = set()
         for sc in score_rows:
             task_info = task_info_by_id.get(sc.exam_task_id)
             if not task_info:
                 continue
+            rank_class_id = _resolve_score_class_id(sc, student_map)
+            if rank_class_id not in all_grade_class_ids:
+                continue
+
             exam_name, subject_id = task_info
+            eligible_score_student_ids.add(sc.student_id)
+            if student_default_class_map.get(sc.student_id) not in all_grade_class_ids:
+                student_default_class_map[sc.student_id] = rank_class_id
             skey = (sc.student_id, exam_name, subject_id)
             prev = score_map.get(skey)
             if not prev or sc.id > prev.id:
                 score_map[skey] = sc
+                class_snapshot_map[(sc.student_id, exam_name)] = rank_class_id
 
-            if sc.class_id_snapshot:
-                ckey = (sc.student_id, exam_name)
-                if ckey not in class_snapshot_map:
-                    class_snapshot_map[ckey] = sc.class_id_snapshot
+        current_student_ids = {s.id for s in current_students}
+        students = [
+            s
+            for s in student_map.values()
+            if s.id in current_student_ids or s.id in eligible_score_student_ids
+        ]
+        students.sort(key=lambda s: str(s.student_id))
+    else:
+        students = current_students
+
+    if not students:
+        payload = {"subjects": ordered_subject_names, "exams": exams, "rows": [], "warnings": warnings}
+        if paged:
+            payload.update({"total": 0, "page": page, "page_size": page_size})
+        return payload, None
 
     exam_student_metrics = {}
 
@@ -531,7 +591,11 @@ def build_score_rank_trend_payload(data):
                 score_numeric[subject_name] = numeric_val
                 total_raw += numeric_val
 
-            rank_class_id = class_snapshot_map.get((stu.id, exam_name)) or stu.class_id
+            rank_class_id = (
+                class_snapshot_map.get((stu.id, exam_name))
+                or student_default_class_map.get(stu.id)
+                or stu.class_id
+            )
 
             per_exam[stu.id] = {
                 "student": stu,
@@ -562,9 +626,25 @@ def build_score_rank_trend_payload(data):
 
         exam_student_metrics[exam_name] = per_exam
 
-    target_students = [s for s in students if s.class_id in target_class_ids]
+    target_students = []
+    student_display_class_map = {}
+    for stu in students:
+        row_class_ids = []
+        for exam in exams:
+            current = exam_student_metrics.get(exam["name"], {}).get(stu.id)
+            if current:
+                row_class_ids.append(current["rank_class_id"])
+
+        display_class_id = row_class_ids[-1] if row_class_ids else stu.class_id
+        if any(cid in target_class_ids for cid in row_class_ids):
+            student_display_class_map[stu.id] = display_class_id
+            target_students.append(stu)
+
     target_students.sort(
-        key=lambda s: (class_num_map.get(s.class_id, 999), str(s.student_id))
+        key=lambda s: (
+            class_num_map.get(student_display_class_map.get(s.id), 999),
+            str(s.student_id),
+        )
     )
 
     rows = []
@@ -638,7 +718,9 @@ def build_score_rank_trend_payload(data):
             {
                 "student_id": stu.student_id,
                 "name": stu.name,
-                "class_name": class_name_map.get(stu.class_id, "未知班级"),
+                "class_name": class_name_map.get(
+                    student_display_class_map.get(stu.id), "未知班级"
+                ),
                 "status": stu.status,
                 "has_change": row_has_change,
                 "exam_data": row_exam_data,
@@ -709,22 +791,30 @@ def build_class_score_stats(data):
     )
     class_ids = [c.id for c in classes]
 
-    students = Student.query.filter(
+    current_students = Student.query.filter(
         Student.class_id.in_(class_ids), Student.status == "在读"
     ).all()
-    student_class_map = {s.id: s.class_id for s in students}
 
-    scores = Score.query.filter(
-        Score.exam_task_id.in_(task_ids), Score.student_id.in_([s.id for s in students])
-    ).all()
+    scores = Score.query.filter(Score.exam_task_id.in_(task_ids)).all()
+    student_map = _load_score_student_map(scores, current_students)
 
-    student_stats = {s.id: {"total": 0, "valid_subjects": 0} for s in students}
+    student_stats = {}
     for sc in scores:
         sid = sc.student_id
-        if sid in student_stats:
-            if sc.remark != "缺考":
-                student_stats[sid]["total"] += sc.score
-                student_stats[sid]["valid_subjects"] += 1
+        rank_class_id = _resolve_score_class_id(sc, student_map)
+        if rank_class_id not in class_ids:
+            continue
+
+        if sid not in student_stats:
+            student_stats[sid] = {
+                "class_id": rank_class_id,
+                "total": 0,
+                "valid_subjects": 0,
+            }
+
+        if sc.remark != "缺考":
+            student_stats[sid]["total"] += sc.score
+            student_stats[sid]["valid_subjects"] += 1
 
     grade_total_score = 0
     grade_exam_count = 0
@@ -734,7 +824,7 @@ def build_class_score_stats(data):
             grade_total_score += stat["total"]
             grade_exam_count += 1
             valid_student_data.append(
-                {"class_id": student_class_map[sid], "total": stat["total"]}
+                {"class_id": stat["class_id"], "total": stat["total"]}
             )
 
     grade_avg = grade_total_score / grade_exam_count if grade_exam_count > 0 else 0
@@ -849,21 +939,37 @@ def build_teacher_score_stats(data):
                 teacher_map[tid]["class_names"].append(f"({c_obj.class_num})班")
 
         all_scores = Score.query.filter(Score.exam_task_id == task.id).all()
-        students = Student.query.filter(
+        current_students = Student.query.filter(
             Student.class_id.in_(grade_class_ids), Student.status == "在读"
         ).all()
-        student_cls_map = {s.id: s.class_id for s in students}
+        student_map = _load_score_student_map(all_scores, current_students)
+        current_student_cls_map = {s.id: s.class_id for s in current_students}
 
-        valid_scores_map = {}
+        latest_score_by_student = {}
         for sc in all_scores:
-            if sc.student_id in student_cls_map and sc.remark != "缺考":
-                valid_scores_map[sc.student_id] = sc.score
+            rank_class_id = _resolve_score_class_id(sc, student_map)
+            if rank_class_id not in grade_class_ids or sc.remark == "缺考":
+                continue
 
-        grade_total_students = len(students)
+            prev = latest_score_by_student.get(sc.student_id)
+            if not prev or sc.id > prev.id:
+                latest_score_by_student[sc.student_id] = sc
+
+        valid_score_items = []
+        for sc in latest_score_by_student.values():
+            rank_class_id = _resolve_score_class_id(sc, student_map)
+            valid_score_items.append(
+                {
+                    "student_id": sc.student_id,
+                    "class_id": rank_class_id,
+                    "score": sc.score,
+                }
+            )
+
+        grade_total_students = len(current_students)
         grade_exam_scores = []
-        for sid in student_cls_map:
-            if sid in valid_scores_map:
-                grade_exam_scores.append(valid_scores_map[sid])
+        for item in valid_score_items:
+            grade_exam_scores.append(item["score"])
 
         grade_exam_count = len(grade_exam_scores)
         grade_sum = sum(grade_exam_scores)
@@ -890,11 +996,15 @@ def build_teacher_score_stats(data):
         for _, t_data in teacher_map.items():
             t_class_ids = set(t_data["class_ids"])
             t_stu_ids = [
-                sid for sid, cid in student_cls_map.items() if cid in t_class_ids
+                sid
+                for sid, cid in current_student_cls_map.items()
+                if cid in t_class_ids
             ]
             t_total_people = len(t_stu_ids)
             t_scores = [
-                valid_scores_map[sid] for sid in t_stu_ids if sid in valid_scores_map
+                item["score"]
+                for item in valid_score_items
+                if item["class_id"] in t_class_ids
             ]
             t_exam_people = len(t_scores)
 

@@ -214,6 +214,10 @@ import {
   getSubjects,
 } from "../../api/admin";
 import { ElMessage, ElMessageBox } from "element-plus";
+import {
+  buildAcademicYearOptions,
+  getDefaultAcademicYear,
+} from "../../utils/academicYear";
 
 const tasks = ref([]);
 const subjects = ref([]);
@@ -223,26 +227,18 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = ref(20);
 
-// 学年按 8 月切换：8 月前为上一学年，8 月及以后为当前学年。
-const now = new Date();
-const currentRealYear = now.getFullYear();
-const defaultAcademicYear =
-  now.getMonth() >= 7 ? currentRealYear : currentRealYear - 1;
+const defaultAcademicYear = getDefaultAcademicYear();
 
 const filterAcademicYear = ref(defaultAcademicYear);
 const filterEntryYear = ref(null);
 const filterSubject = ref(null);
 
-const academicYearOptions = computed(() => {
-  const years = [];
-  for (let i = -2; i < 3; i++) {
-    years.push(defaultAcademicYear + i);
-  }
-  return years.sort((a, b) => b - a);
-});
+const academicYearOptions = computed(() =>
+  buildAcademicYearOptions(defaultAcademicYear)
+);
 
 const gradeOptions = computed(() => {
-  const base = now.getMonth() >= 7 ? currentRealYear : currentRealYear - 1;
+  const base = defaultAcademicYear;
   return [
     { year: base, label: `${base}级` },
     { year: base - 1, label: `${base - 1}级` },

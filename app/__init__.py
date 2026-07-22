@@ -10,6 +10,133 @@ import sys
 from .license_guard import LicenseError, validate_license
 
 
+def _ensure_unique_score_records():
+    """
+    兼容已有 SQLite 库：
+    1) 归档同一学生同一考试的旧重复成绩，保留 id 最大的一条。
+    2) 创建唯一索引，防止后续再次写入重复成绩。
+    """
+    archive_table_sql = """
+        CREATE TABLE IF NOT EXISTS score_duplicate_archives (
+            original_score_id INTEGER PRIMARY KEY,
+            archived_at TEXT NOT NULL,
+            student_id INTEGER,
+            subject_id INTEGER,
+            score REAL,
+            remark TEXT,
+            exam_task_id INTEGER,
+            class_id_snapshot INTEGER,
+            term TEXT,
+            create_time TEXT,
+            update_time TEXT,
+            kept_score_id INTEGER,
+            archive_reason TEXT NOT NULL
+        );
+    """
+    duplicate_groups_sql = """
+        SELECT COUNT(*)
+        FROM (
+            SELECT student_id, exam_task_id
+            FROM scores
+            WHERE student_id IS NOT NULL AND exam_task_id IS NOT NULL
+            GROUP BY student_id, exam_task_id
+            HAVING COUNT(*) > 1
+        ) duplicate_groups;
+    """
+    duplicate_rows_sql = """
+        SELECT COUNT(*)
+        FROM scores s
+        JOIN (
+            SELECT student_id, exam_task_id, MAX(id) AS keep_id
+            FROM scores
+            WHERE student_id IS NOT NULL AND exam_task_id IS NOT NULL
+            GROUP BY student_id, exam_task_id
+            HAVING COUNT(*) > 1
+        ) keep_rows
+            ON s.student_id = keep_rows.student_id
+            AND s.exam_task_id = keep_rows.exam_task_id
+        WHERE s.id <> keep_rows.keep_id;
+    """
+    archive_duplicates_sql = """
+        INSERT OR IGNORE INTO score_duplicate_archives (
+            original_score_id,
+            archived_at,
+            student_id,
+            subject_id,
+            score,
+            remark,
+            exam_task_id,
+            class_id_snapshot,
+            term,
+            create_time,
+            update_time,
+            kept_score_id,
+            archive_reason
+        )
+        SELECT
+            s.id,
+            datetime('now', 'localtime'),
+            s.student_id,
+            s.subject_id,
+            s.score,
+            s.remark,
+            s.exam_task_id,
+            s.class_id_snapshot,
+            s.term,
+            s.create_time,
+            s.update_time,
+            keep_rows.keep_id,
+            '同一学生同一考试存在重复成绩，建立唯一约束前自动归档旧记录'
+        FROM scores s
+        JOIN (
+            SELECT student_id, exam_task_id, MAX(id) AS keep_id
+            FROM scores
+            WHERE student_id IS NOT NULL AND exam_task_id IS NOT NULL
+            GROUP BY student_id, exam_task_id
+            HAVING COUNT(*) > 1
+        ) keep_rows
+            ON s.student_id = keep_rows.student_id
+            AND s.exam_task_id = keep_rows.exam_task_id
+        WHERE s.id <> keep_rows.keep_id;
+    """
+    delete_duplicates_sql = """
+        DELETE FROM scores
+        WHERE id IN (
+            SELECT s.id
+            FROM scores s
+            JOIN (
+                SELECT student_id, exam_task_id, MAX(id) AS keep_id
+                FROM scores
+                WHERE student_id IS NOT NULL AND exam_task_id IS NOT NULL
+                GROUP BY student_id, exam_task_id
+                HAVING COUNT(*) > 1
+            ) keep_rows
+                ON s.student_id = keep_rows.student_id
+                AND s.exam_task_id = keep_rows.exam_task_id
+            WHERE s.id <> keep_rows.keep_id
+        );
+    """
+    unique_index_sql = """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_scores_student_exam_task
+        ON scores(student_id, exam_task_id)
+        WHERE student_id IS NOT NULL AND exam_task_id IS NOT NULL;
+    """
+
+    db.session.execute(text(archive_table_sql))
+    duplicate_groups = db.session.execute(text(duplicate_groups_sql)).scalar() or 0
+    duplicate_rows = db.session.execute(text(duplicate_rows_sql)).scalar() or 0
+
+    if duplicate_rows:
+        db.session.execute(text(archive_duplicates_sql))
+        db.session.execute(text(delete_duplicates_sql))
+        print(
+            ">> [SQLite] 成绩重复记录已清理: "
+            f"{duplicate_groups} 组，归档并删除 {duplicate_rows} 条旧记录。"
+        )
+
+    db.session.execute(text(unique_index_sql))
+
+
 def _optimize_sqlite_runtime(app):
     """
     对 SQLite 做运行时优化。
@@ -54,6 +181,8 @@ def _optimize_sqlite_runtime(app):
     try:
         for sql in pragma_sql:
             db.session.execute(text(sql))
+
+        _ensure_unique_score_records()
 
         for sql in index_sql:
             db.session.execute(text(sql))
