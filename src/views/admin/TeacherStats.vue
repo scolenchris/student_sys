@@ -20,6 +20,7 @@
           v-model="query.academic_year"
           placeholder="选择学年"
           style="width: 140px"
+          @change="handleEntryYearChange(query.entry_year)"
         >
           <el-option
             v-for="y in academicYearOptions"
@@ -227,7 +228,7 @@ const handleEntryYearChange = async (val) => {
   query.exam_name = "";
   if (!val) return;
   try {
-    const res = await getExamNames(val);
+    const res = await getExamNames(val, query.academic_year);
     examNameOptions.value = res.data;
   } catch (e) {
     ElMessage.error("获取考试列表失败");

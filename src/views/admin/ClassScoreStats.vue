@@ -24,6 +24,22 @@
 
     <el-form :inline="true" :model="query" class="filter-form">
       <div class="filter-row">
+        <el-form-item label="学年">
+          <el-select
+            v-model="query.academic_year"
+            placeholder="选择学年"
+            @change="handleYearChange(query.entry_year)"
+            style="width: 150px"
+          >
+            <el-option
+              v-for="year in academicYearOptions"
+              :key="year"
+              :label="`${year}-${year + 1}学年`"
+              :value="year"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="年级">
           <el-select
             v-model="query.entry_year"
@@ -242,13 +258,26 @@ const allClassOptions = ref([]);
 const examNameOptions = ref([]);
 const tableData = ref([]);
 
+const now = new Date();
+const defaultAcademicYear =
+  now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+
 const query = reactive({
+  academic_year: defaultAcademicYear,
   entry_year: null,
   exam_name: "",
   subject_ids: [],
   threshold_excellent: 85,
   threshold_pass: 60,
   threshold_low: 30,
+});
+
+const academicYearOptions = computed(() => {
+  const years = [];
+  for (let i = -2; i < 3; i += 1) {
+    years.push(defaultAcademicYear + i);
+  }
+  return years.sort((a, b) => b - a);
 });
 
 const gradeOptions = computed(() => {
@@ -273,7 +302,7 @@ const handleYearChange = async (val) => {
   tableData.value = [];
   if (!val) return;
   try {
-    const res = await getExamNames(val);
+    const res = await getExamNames(val, query.academic_year);
     examNameOptions.value = res.data;
   } catch (err) {
     ElMessage.error("获取考试列表失败");
@@ -281,8 +310,13 @@ const handleYearChange = async (val) => {
 };
 
 const handleSearch = async () => {
-  if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
-    return ElMessage.warning("请选择年级、考试名称及至少一门科目");
+  if (
+    !query.academic_year ||
+    !query.entry_year ||
+    !query.exam_name ||
+    query.subject_ids.length === 0
+  ) {
+    return ElMessage.warning("请选择学年、年级、考试名称及至少一门科目");
   }
 
   loading.value = true;
@@ -300,8 +334,13 @@ const handleSearch = async () => {
 };
 
 const handleExport = async () => {
-  if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
-    return ElMessage.warning("请先选择年级、考试名称及统计科目");
+  if (
+    !query.academic_year ||
+    !query.entry_year ||
+    !query.exam_name ||
+    query.subject_ids.length === 0
+  ) {
+    return ElMessage.warning("请先选择学年、年级、考试名称及统计科目");
   }
 
   exporting.value = true;

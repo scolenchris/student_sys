@@ -19,6 +19,22 @@
     </template>
 
     <el-form :inline="true" class="filter-bar">
+      <el-form-item label="学年">
+        <el-select
+          v-model="query.academic_year"
+          placeholder="选择学年"
+          style="width: 150px"
+          @change="handleYearChange(query.entry_year)"
+        >
+          <el-option
+            v-for="year in academicYearOptions"
+            :key="year"
+            :label="`${year}-${year + 1}学年`"
+            :value="year"
+          />
+        </el-select>
+      </el-form-item>
+
       <el-form-item label="年级">
         <el-select
           v-model="query.entry_year"
@@ -271,7 +287,12 @@ const tableData = ref([]);
 const warnings = ref([]);
 const total = ref(0);
 
+const now = new Date();
+const defaultAcademicYear =
+  now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+
 const query = reactive({
+  academic_year: defaultAcademicYear,
   entry_year: null,
   class_ids: [],
   exam_names: [],
@@ -279,6 +300,14 @@ const query = reactive({
   keyword: "",
   page: 1,
   page_size: 20,
+});
+
+const academicYearOptions = computed(() => {
+  const years = [];
+  for (let i = -2; i < 3; i += 1) {
+    years.push(defaultAcademicYear + i);
+  }
+  return years.sort((a, b) => b - a);
 });
 
 const gradeOptions = computed(() => {
@@ -324,7 +353,7 @@ const handleYearChange = async (val) => {
 
   if (!val) return;
   try {
-    const res = await getExamNames(val);
+    const res = await getExamNames(val, query.academic_year);
     examNameOptions.value = Array.isArray(res.data) ? res.data : [];
   } catch (err) {
     ElMessage.error("获取考试列表失败");
@@ -332,6 +361,7 @@ const handleYearChange = async (val) => {
 };
 
 const handleSearch = async (resetPage = false) => {
+  if (!query.academic_year) return ElMessage.warning("请选择学年");
   if (!query.entry_year) return ElMessage.warning("请选择年级");
   if (query.exam_names.length < 2)
     return ElMessage.warning("请至少选择2次考试");
@@ -344,6 +374,7 @@ const handleSearch = async (resetPage = false) => {
   loading.value = true;
   try {
     const res = await getScoreRankTrend({
+      academic_year: query.academic_year,
       entry_year: query.entry_year,
       class_ids: query.class_ids,
       exam_names: query.exam_names,
@@ -408,6 +439,7 @@ const getDeltaClass = (value) => {
 };
 
 const exportExcel = async () => {
+  if (!query.academic_year) return ElMessage.warning("请选择学年");
   if (!query.entry_year) return ElMessage.warning("请选择年级");
   if (query.exam_names.length < 2)
     return ElMessage.warning("请至少选择2次考试");
@@ -417,6 +449,7 @@ const exportExcel = async () => {
   exporting.value = true;
   try {
     const res = await exportScoreRankTrendExcel({
+      academic_year: query.academic_year,
       entry_year: query.entry_year,
       class_ids: query.class_ids,
       exam_names: query.exam_names,
@@ -448,7 +481,12 @@ const exportExcel = async () => {
 onMounted(initData);
 
 watch(onlyChanged, () => {
-  if (!query.entry_year || query.exam_names.length < 2 || query.subject_ids.length === 0) {
+  if (
+    !query.academic_year ||
+    !query.entry_year ||
+    query.exam_names.length < 2 ||
+    query.subject_ids.length === 0
+  ) {
     return;
   }
   handleSearch(true);

@@ -17,7 +17,10 @@ def get_class_report():
 @admin_bp.route("/stats/exam_names", methods=["GET"])
 def get_grade_exam_names():
     entry_year = request.args.get("entry_year", type=int)
-    return jsonify(stats_service.get_exam_names_by_entry_year(entry_year))
+    academic_year = request.args.get("academic_year", type=int)
+    return jsonify(
+        stats_service.get_exam_names_by_entry_year(entry_year, academic_year)
+    )
 
 
 @admin_bp.route("/stats/comprehensive_report", methods=["POST"])

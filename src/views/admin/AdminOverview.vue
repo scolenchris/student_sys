@@ -456,7 +456,7 @@ const loadScoreExamOptions = async () => {
   }
 
   try {
-    const res = await getExamNames(scoreEntryYear.value);
+    const res = await getExamNames(scoreEntryYear.value, selectedAcademicYear.value);
     const names = res.data || [];
     scoreExamOptions.value = names;
     scoreExamName.value = names.length > 0 ? names[names.length - 1] : "";
@@ -485,12 +485,14 @@ const loadScoreInsight = async () => {
 
     const [reportRes, classStatsRes] = await Promise.all([
       getComprehensiveReport({
+        academic_year: selectedAcademicYear.value,
         entry_year: scoreEntryYear.value,
         exam_name: scoreExamName.value,
         subject_ids: subjectIds,
         class_ids: [],
       }),
       getClassScoreStats({
+        academic_year: selectedAcademicYear.value,
         entry_year: scoreEntryYear.value,
         exam_name: scoreExamName.value,
         subject_ids: subjectIds,

@@ -114,13 +114,13 @@ def build_class_report(class_id, term):
     }
 
 
-def get_exam_names_by_entry_year(entry_year):
-    if not entry_year:
+def get_exam_names_by_entry_year(entry_year, academic_year):
+    if not entry_year or not academic_year:
         return []
 
     names = (
         db.session.query(ExamTask.name)
-        .filter_by(entry_year=entry_year)
+        .filter_by(entry_year=entry_year, academic_year=academic_year)
         .group_by(ExamTask.name)
         .order_by(func.min(ExamTask.id).asc())
         .all()
@@ -130,13 +130,14 @@ def get_exam_names_by_entry_year(entry_year):
 
 def build_comprehensive_report(data):
     entry_year = data.get("entry_year")
+    academic_year = data.get("academic_year")
     exam_name = data.get("exam_name")
     subject_ids = data.get("subject_ids", [])
     class_ids = data.get("class_ids", [])
     keyword = str(data.get("keyword", "")).strip()
 
-    if not entry_year or not exam_name or not subject_ids:
-        return None, ("请选择完整的筛选条件（年级、考试、科目）", 400)
+    if not entry_year or not academic_year or not exam_name or not subject_ids:
+        return None, ("请选择完整的筛选条件（学年、年级、考试、科目）", 400)
     paged, page, page_size = _resolve_pagination(data)
 
     all_classes = ClassInfo.query.filter_by(entry_year=entry_year).all()
@@ -145,6 +146,7 @@ def build_comprehensive_report(data):
 
     tasks = ExamTask.query.filter(
         ExamTask.entry_year == entry_year,
+        ExamTask.academic_year == academic_year,
         ExamTask.name == exam_name,
         ExamTask.subject_id.in_(subject_ids),
     ).all()
@@ -289,6 +291,7 @@ def build_comprehensive_report(data):
 
 def build_score_rank_trend_payload(data):
     entry_year = data.get("entry_year")
+    academic_year = data.get("academic_year")
     exam_names_raw = data.get("exam_names", [])
     subject_ids_raw = data.get("subject_ids", [])
     class_ids_raw = data.get("class_ids", [])
@@ -300,6 +303,11 @@ def build_score_rank_trend_payload(data):
         entry_year = int(entry_year)
     except (TypeError, ValueError):
         return None, ("请选择有效的年级", 400)
+
+    try:
+        academic_year = int(academic_year)
+    except (TypeError, ValueError):
+        return None, ("请选择有效的学年", 400)
 
     exam_names = []
     seen_exam_names = set()
@@ -404,6 +412,7 @@ def build_score_rank_trend_payload(data):
 
     raw_tasks = ExamTask.query.filter(
         ExamTask.entry_year == entry_year,
+        ExamTask.academic_year == academic_year,
         ExamTask.name.in_(exam_names),
         ExamTask.subject_id.in_(ordered_subject_ids),
     ).all()
@@ -667,6 +676,7 @@ def build_score_rank_trend_payload(data):
 
 def build_class_score_stats(data):
     entry_year = data.get("entry_year")
+    academic_year = data.get("academic_year")
     exam_name = data.get("exam_name")
     subject_ids = data.get("subject_ids", [])
 
@@ -674,11 +684,12 @@ def build_class_score_stats(data):
     th_pass = data.get("threshold_pass", 60) / 100.0
     th_low = data.get("threshold_low", 30) / 100.0
 
-    if not entry_year or not exam_name or not subject_ids:
+    if not entry_year or not academic_year or not exam_name or not subject_ids:
         return None, ("请选择完整的筛选条件", 400)
 
     tasks = ExamTask.query.filter(
         ExamTask.entry_year == entry_year,
+        ExamTask.academic_year == academic_year,
         ExamTask.name == exam_name,
         ExamTask.subject_id.in_(subject_ids),
     ).all()

@@ -1161,9 +1161,13 @@ def export_teachers_excel(academic_year=None, mode="backup"):
     return output, f"{target_year}学年_教师信息表_信息备份.xlsx"
 
 
-def build_score_import_template(entry_year, class_ids, subject_ids, exam_name=None):
+def build_score_import_template(
+    entry_year, class_ids, subject_ids, exam_name=None, academic_year=None
+):
     if not entry_year or not subject_ids:
         raise ValueError("请至少选择年级和统计科目")
+    if exam_name and not academic_year:
+        raise ValueError("导出成绩备份必须选择学年")
 
     subjects = Subject.query.filter(Subject.id.in_(subject_ids)).order_by(Subject.id).all()
     subject_names = [s.name for s in subjects]
@@ -1186,6 +1190,7 @@ def build_score_import_template(entry_year, class_ids, subject_ids, exam_name=No
     if exam_name:
         tasks = ExamTask.query.filter(
             ExamTask.entry_year == entry_year,
+            ExamTask.academic_year == academic_year,
             ExamTask.name == exam_name,
             ExamTask.subject_id.in_(subject_ids),
         ).all()
@@ -1221,12 +1226,15 @@ def build_score_import_template(entry_year, class_ids, subject_ids, exam_name=No
         df.to_excel(writer, index=False, sheet_name=sheet_name)
     output.seek(0)
 
-    return output, f"{entry_year}级_{exam_name or '导入模版'}_成绩数据.xlsx"
+    year_prefix = f"{academic_year}学年_" if exam_name and academic_year else ""
+    return output, f"{year_prefix}{entry_year}级_{exam_name or '导入模版'}_成绩数据.xlsx"
 
 
-def process_admin_scores_import(file, entry_year, exam_name, subject_ids, class_ids):
-    if not entry_year or not exam_name or not subject_ids:
-        return {"msg": "必要参数缺失(年级/考试/科目)"}, 400
+def process_admin_scores_import(
+    file, entry_year, academic_year, exam_name, subject_ids, class_ids
+):
+    if not entry_year or not academic_year or not exam_name or not subject_ids:
+        return {"msg": "必要参数缺失(学年/年级/考试/科目)"}, 400
 
     logs = {"fatal_errors": [], "warnings": [], "missing_students": []}
 
@@ -1241,6 +1249,7 @@ def process_admin_scores_import(file, entry_year, exam_name, subject_ids, class_
 
     tasks = ExamTask.query.filter(
         ExamTask.entry_year == entry_year,
+        ExamTask.academic_year == academic_year,
         ExamTask.name == exam_name,
         ExamTask.subject_id.in_(subject_ids),
     ).all()
@@ -1441,6 +1450,7 @@ def process_admin_scores_import(file, entry_year, exam_name, subject_ids, class_
             import_type="score",
             source_filename=file.filename,
             scope={
+                "academic_year": academic_year,
                 "entry_year": entry_year,
                 "exam_name": exam_name,
                 "subject_ids": subject_ids,

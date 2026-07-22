@@ -9,7 +9,11 @@
               type="warning"
               plain
               @click="handleTemplateDownload('template')"
-              :disabled="!query.entry_year || query.subject_ids.length === 0"
+              :disabled="
+                !query.academic_year ||
+                !query.entry_year ||
+                query.subject_ids.length === 0
+              "
             >
               <el-icon><Document /></el-icon> 下载成绩录入模板
             </el-button>
@@ -17,7 +21,7 @@
               type="success"
               plain
               @click="handleTemplateDownload('backup')"
-              :disabled="!query.entry_year || !query.exam_name"
+              :disabled="!query.academic_year || !query.entry_year || !query.exam_name"
             >
               <el-icon><Download /></el-icon> 导出考试成绩备份
             </el-button>
@@ -49,6 +53,22 @@
     </template>
 
     <el-form :inline="true" class="filter-bar">
+      <el-form-item label="学年">
+        <el-select
+          v-model="query.academic_year"
+          placeholder="选择学年"
+          @change="handleYearChange(query.entry_year)"
+          style="width: 150px"
+        >
+          <el-option
+            v-for="year in academicYearOptions"
+            :key="year"
+            :label="`${year}-${year + 1}学年`"
+            :value="year"
+          />
+        </el-select>
+      </el-form-item>
+
       <el-form-item label="年级">
         <el-select
           v-model="query.entry_year"
@@ -376,7 +396,12 @@ const total = ref(0);
 const tableData = ref([]);
 const dynamicColumns = ref([]);
 
+const now = new Date();
+const defaultAcademicYear =
+  now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+
 const query = reactive({
+  academic_year: defaultAcademicYear,
   entry_year: null,
   exam_name: "",
   subject_ids: [],
@@ -384,6 +409,14 @@ const query = reactive({
   keyword: "",
   page: 1,
   page_size: 20,
+});
+
+const academicYearOptions = computed(() => {
+  const years = [];
+  for (let i = -2; i < 3; i += 1) {
+    years.push(defaultAcademicYear + i);
+  }
+  return years.sort((a, b) => b - a);
 });
 
 const importResult = reactive({
@@ -430,7 +463,7 @@ const handleYearChange = async (val) => {
   if (!val) return;
 
   try {
-    const res = await getExamNames(val);
+    const res = await getExamNames(val, query.academic_year);
     examNameOptions.value = res.data;
   } catch (err) {
     ElMessage.error("获取考试列表失败");
@@ -438,7 +471,12 @@ const handleYearChange = async (val) => {
 };
 
 const handleSearch = async (resetPage = false) => {
-  if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
+  if (
+    !query.academic_year ||
+    !query.entry_year ||
+    !query.exam_name ||
+    query.subject_ids.length === 0
+  ) {
     return;
   }
   if (resetPage) {
@@ -448,6 +486,7 @@ const handleSearch = async (resetPage = false) => {
   loading.value = true;
   try {
     const res = await getComprehensiveReport({
+      academic_year: query.academic_year,
       entry_year: query.entry_year,
       exam_name: query.exam_name,
       subject_ids: query.subject_ids,
@@ -483,12 +522,18 @@ const handlePageSizeChange = () => {
 };
 
 const exportExcelReport = async () => {
-  if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
+  if (
+    !query.academic_year ||
+    !query.entry_year ||
+    !query.exam_name ||
+    query.subject_ids.length === 0
+  ) {
     return ElMessage.warning("请先完成查询条件选择");
   }
 
   try {
     const res = await exportComprehensiveReportExcel({
+      academic_year: query.academic_year,
       entry_year: query.entry_year,
       exam_name: query.exam_name,
       subject_ids: query.subject_ids,
@@ -514,6 +559,7 @@ const exportExcelReport = async () => {
 };
 
 const handleTemplateDownload = async (type) => {
+  if (!query.academic_year) return ElMessage.warning("请选择学年");
   if (!query.entry_year) return ElMessage.warning("请选择年级");
   if (query.subject_ids.length === 0)
     return ElMessage.warning("请至少选择一个科目");
@@ -524,6 +570,7 @@ const handleTemplateDownload = async (type) => {
 
   try {
     const res = await getScoreTemplate({
+      academic_year: query.academic_year,
       entry_year: query.entry_year,
       class_ids: query.class_ids,
       subject_ids: query.subject_ids,
@@ -545,15 +592,20 @@ const handleTemplateDownload = async (type) => {
 
 const handleStrictImport = async (param) => {
   // 导入前必须先明确目标范围，避免误写入。
-  if (!query.entry_year || !query.exam_name || query.subject_ids.length === 0) {
+  if (
+    !query.academic_year ||
+    !query.entry_year ||
+    !query.exam_name ||
+    query.subject_ids.length === 0
+  ) {
     return ElMessage.warning(
-      "请务必先在上方筛选栏选择：年级、考试名称、以及本次要导入的科目！",
+      "请务必先在上方筛选栏选择：学年、年级、考试名称、以及本次要导入的科目！",
     );
   }
 
   try {
     await ElMessageBox.confirm(
-      `即将向【${query.entry_year}级 - ${query.exam_name}】导入 ${query.subject_ids.length} 个科目的成绩。\n请确保Excel表头与系统科目名称严格一致。`,
+      `即将向【${query.academic_year}学年 - ${query.entry_year}级 - ${query.exam_name}】导入 ${query.subject_ids.length} 个科目的成绩。\n请确保Excel表头与系统科目名称严格一致。`,
       "导入确认",
       {
         confirmButtonText: "确定导入",
@@ -567,6 +619,7 @@ const handleStrictImport = async (param) => {
 
   const formData = new FormData();
   formData.append("file", param.file);
+  formData.append("academic_year", query.academic_year);
   formData.append("entry_year", query.entry_year);
   formData.append("exam_name", query.exam_name);
   formData.append("subject_ids", JSON.stringify(query.subject_ids));

@@ -112,6 +112,7 @@ def export_course_assignments():
 def get_score_import_template():
     data = request.get_json() or {}
     entry_year = data.get("entry_year")
+    academic_year = data.get("academic_year")
     class_ids = data.get("class_ids", [])
     subject_ids = data.get("subject_ids", [])
     exam_name = data.get("exam_name")
@@ -122,6 +123,7 @@ def get_score_import_template():
             class_ids=class_ids,
             subject_ids=subject_ids,
             exam_name=exam_name,
+            academic_year=academic_year,
         )
     except ValueError as e:
         return jsonify({"msg": str(e)}), 400
@@ -142,6 +144,7 @@ def import_admin_scores():
 
     file = request.files["file"]
     entry_year = request.form.get("entry_year", type=int)
+    academic_year = request.form.get("academic_year", type=int)
     exam_name = request.form.get("exam_name")
 
     try:
@@ -153,6 +156,7 @@ def import_admin_scores():
     result, status = excel_service.process_admin_scores_import(
         file=file,
         entry_year=entry_year,
+        academic_year=academic_year,
         exam_name=exam_name,
         subject_ids=subject_ids,
         class_ids=class_ids,
