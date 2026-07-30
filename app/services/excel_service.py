@@ -511,6 +511,9 @@ def process_students_import(file):
             "warnings": warnings,
         }, 200
 
+    except IntegrityError:
+        db.session.rollback()
+        return {"msg": "数据库写入异常：班级、学号或身份证号存在重复，请刷新后重试"}, 409
     except Exception as e:
         db.session.rollback()
         return {"msg": f"数据库错误: {str(e)}"}, 500

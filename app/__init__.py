@@ -137,6 +137,371 @@ def _ensure_unique_score_records():
     db.session.execute(text(unique_index_sql))
 
 
+def _ensure_unique_class_records():
+    """
+    兼容已有 SQLite 库：
+    1) 合并同一入学届同一班号的重复班级，保留 id 最小的一条。
+    2) 将学生、成绩班级快照、任课/班主任分配和审计快照引用迁到保留班级。
+    3) 创建唯一索引，防止后续再次出现重复班级。
+    """
+    duplicate_groups_sql = """
+        SELECT COUNT(*)
+        FROM (
+            SELECT entry_year, class_num
+            FROM classes
+            GROUP BY entry_year, class_num
+            HAVING COUNT(*) > 1
+        ) duplicate_groups;
+    """
+    duplicate_rows_sql = """
+        SELECT COUNT(*) FROM class_duplicate_merge_map;
+    """
+    drop_merge_map_sql = """
+        DROP TABLE IF EXISTS class_duplicate_merge_map;
+    """
+    create_merge_map_sql = """
+        CREATE TEMP TABLE class_duplicate_merge_map AS
+        SELECT c.id AS duplicate_id, keep_rows.keep_id
+        FROM classes c
+        JOIN (
+            SELECT entry_year, class_num, MIN(id) AS keep_id
+            FROM classes
+            GROUP BY entry_year, class_num
+            HAVING COUNT(*) > 1
+        ) keep_rows
+            ON c.entry_year = keep_rows.entry_year
+            AND c.class_num = keep_rows.class_num
+        WHERE c.id <> keep_rows.keep_id;
+    """
+    class_archive_table_sql = """
+        CREATE TABLE IF NOT EXISTS class_duplicate_archives (
+            original_class_id INTEGER PRIMARY KEY,
+            archived_at TEXT NOT NULL,
+            entry_year INTEGER NOT NULL,
+            class_num INTEGER NOT NULL,
+            kept_class_id INTEGER NOT NULL,
+            moved_student_count INTEGER NOT NULL DEFAULT 0,
+            moved_score_snapshot_count INTEGER NOT NULL DEFAULT 0,
+            moved_course_assignment_count INTEGER NOT NULL DEFAULT 0,
+            moved_head_teacher_assignment_count INTEGER NOT NULL DEFAULT 0,
+            moved_audit_log_count INTEGER NOT NULL DEFAULT 0,
+            archive_reason TEXT NOT NULL
+        );
+    """
+    course_archive_table_sql = """
+        CREATE TABLE IF NOT EXISTS course_assignment_duplicate_archives (
+            original_assignment_id INTEGER PRIMARY KEY,
+            archived_at TEXT NOT NULL,
+            teacher_id INTEGER,
+            class_id INTEGER,
+            kept_class_id INTEGER,
+            subject_id INTEGER,
+            academic_year INTEGER,
+            kept_assignment_id INTEGER,
+            archive_reason TEXT NOT NULL
+        );
+    """
+    head_teacher_archive_table_sql = """
+        CREATE TABLE IF NOT EXISTS head_teacher_duplicate_archives (
+            original_assignment_id INTEGER PRIMARY KEY,
+            archived_at TEXT NOT NULL,
+            teacher_id INTEGER,
+            class_id INTEGER,
+            kept_class_id INTEGER,
+            academic_year INTEGER,
+            kept_assignment_id INTEGER,
+            archive_reason TEXT NOT NULL
+        );
+    """
+    archive_classes_sql = """
+        INSERT OR IGNORE INTO class_duplicate_archives (
+            original_class_id,
+            archived_at,
+            entry_year,
+            class_num,
+            kept_class_id,
+            moved_student_count,
+            moved_score_snapshot_count,
+            moved_course_assignment_count,
+            moved_head_teacher_assignment_count,
+            moved_audit_log_count,
+            archive_reason
+        )
+        SELECT
+            c.id,
+            datetime('now', 'localtime'),
+            c.entry_year,
+            c.class_num,
+            class_map.keep_id,
+            (SELECT COUNT(*) FROM students WHERE class_id = c.id),
+            (SELECT COUNT(*) FROM scores WHERE class_id_snapshot = c.id),
+            (SELECT COUNT(*) FROM course_assignments WHERE class_id = c.id),
+            (SELECT COUNT(*) FROM assign_head_teacher WHERE class_id = c.id),
+            (SELECT COUNT(*) FROM audit_logs WHERE class_id_snapshot = c.id),
+            '同一入学届同一班号存在重复班级，建立唯一约束前自动合并'
+        FROM classes c
+        JOIN class_duplicate_merge_map class_map ON c.id = class_map.duplicate_id;
+    """
+    archive_course_conflicts_sql = """
+        INSERT OR IGNORE INTO course_assignment_duplicate_archives (
+            original_assignment_id,
+            archived_at,
+            teacher_id,
+            class_id,
+            kept_class_id,
+            subject_id,
+            academic_year,
+            kept_assignment_id,
+            archive_reason
+        )
+        WITH class_map AS (
+            SELECT duplicate_id, keep_id FROM class_duplicate_merge_map
+        ),
+        normalized AS (
+            SELECT
+                ca.id,
+                ca.teacher_id,
+                ca.class_id,
+                COALESCE(class_map.keep_id, ca.class_id) AS normalized_class_id,
+                ca.subject_id,
+                ca.academic_year,
+                FIRST_VALUE(ca.id) OVER (
+                    PARTITION BY
+                        COALESCE(class_map.keep_id, ca.class_id),
+                        ca.subject_id,
+                        ca.academic_year
+                    ORDER BY
+                        CASE WHEN class_map.keep_id IS NULL THEN 0 ELSE 1 END,
+                        ca.id DESC
+                ) AS kept_assignment_id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY
+                        COALESCE(class_map.keep_id, ca.class_id),
+                        ca.subject_id,
+                        ca.academic_year
+                    ORDER BY
+                        CASE WHEN class_map.keep_id IS NULL THEN 0 ELSE 1 END,
+                        ca.id DESC
+                ) AS row_no
+            FROM course_assignments ca
+            LEFT JOIN class_map ON ca.class_id = class_map.duplicate_id
+            WHERE
+                class_map.keep_id IS NOT NULL
+                OR EXISTS (
+                    SELECT 1 FROM class_map keep_map WHERE keep_map.keep_id = ca.class_id
+                )
+        )
+        SELECT
+            id,
+            datetime('now', 'localtime'),
+            teacher_id,
+            class_id,
+            normalized_class_id,
+            subject_id,
+            academic_year,
+            kept_assignment_id,
+            '重复班级合并后同一班级同一学年同一科目任课分配冲突，自动归档冲突记录'
+        FROM normalized
+        WHERE row_no > 1;
+    """
+    delete_course_conflicts_sql = """
+        WITH class_map AS (
+            SELECT duplicate_id, keep_id FROM class_duplicate_merge_map
+        ),
+        normalized AS (
+            SELECT
+                ca.id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY
+                        COALESCE(class_map.keep_id, ca.class_id),
+                        ca.subject_id,
+                        ca.academic_year
+                    ORDER BY
+                        CASE WHEN class_map.keep_id IS NULL THEN 0 ELSE 1 END,
+                        ca.id DESC
+                ) AS row_no
+            FROM course_assignments ca
+            LEFT JOIN class_map ON ca.class_id = class_map.duplicate_id
+            WHERE
+                class_map.keep_id IS NOT NULL
+                OR EXISTS (
+                    SELECT 1 FROM class_map keep_map WHERE keep_map.keep_id = ca.class_id
+                )
+        )
+        DELETE FROM course_assignments
+        WHERE id IN (
+            SELECT id FROM normalized WHERE row_no > 1
+        );
+    """
+    archive_head_teacher_conflicts_sql = """
+        INSERT OR IGNORE INTO head_teacher_duplicate_archives (
+            original_assignment_id,
+            archived_at,
+            teacher_id,
+            class_id,
+            kept_class_id,
+            academic_year,
+            kept_assignment_id,
+            archive_reason
+        )
+        WITH class_map AS (
+            SELECT duplicate_id, keep_id FROM class_duplicate_merge_map
+        ),
+        normalized AS (
+            SELECT
+                ht.id,
+                ht.teacher_id,
+                ht.class_id,
+                COALESCE(class_map.keep_id, ht.class_id) AS normalized_class_id,
+                ht.academic_year,
+                FIRST_VALUE(ht.id) OVER (
+                    PARTITION BY
+                        COALESCE(class_map.keep_id, ht.class_id),
+                        ht.academic_year
+                    ORDER BY
+                        CASE WHEN class_map.keep_id IS NULL THEN 0 ELSE 1 END,
+                        ht.id DESC
+                ) AS kept_assignment_id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY
+                        COALESCE(class_map.keep_id, ht.class_id),
+                        ht.academic_year
+                    ORDER BY
+                        CASE WHEN class_map.keep_id IS NULL THEN 0 ELSE 1 END,
+                        ht.id DESC
+                ) AS row_no
+            FROM assign_head_teacher ht
+            LEFT JOIN class_map ON ht.class_id = class_map.duplicate_id
+            WHERE
+                class_map.keep_id IS NOT NULL
+                OR EXISTS (
+                    SELECT 1 FROM class_map keep_map WHERE keep_map.keep_id = ht.class_id
+                )
+        )
+        SELECT
+            id,
+            datetime('now', 'localtime'),
+            teacher_id,
+            class_id,
+            normalized_class_id,
+            academic_year,
+            kept_assignment_id,
+            '重复班级合并后同一班级同一学年班主任分配冲突，自动归档冲突记录'
+        FROM normalized
+        WHERE row_no > 1;
+    """
+    delete_head_teacher_conflicts_sql = """
+        WITH class_map AS (
+            SELECT duplicate_id, keep_id FROM class_duplicate_merge_map
+        ),
+        normalized AS (
+            SELECT
+                ht.id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY
+                        COALESCE(class_map.keep_id, ht.class_id),
+                        ht.academic_year
+                    ORDER BY
+                        CASE WHEN class_map.keep_id IS NULL THEN 0 ELSE 1 END,
+                        ht.id DESC
+                ) AS row_no
+            FROM assign_head_teacher ht
+            LEFT JOIN class_map ON ht.class_id = class_map.duplicate_id
+            WHERE
+                class_map.keep_id IS NOT NULL
+                OR EXISTS (
+                    SELECT 1 FROM class_map keep_map WHERE keep_map.keep_id = ht.class_id
+                )
+        )
+        DELETE FROM assign_head_teacher
+        WHERE id IN (
+            SELECT id FROM normalized WHERE row_no > 1
+        );
+    """
+    update_reference_sql = [
+        """
+        UPDATE students
+        SET class_id = (
+            SELECT keep_id
+            FROM class_duplicate_merge_map
+            WHERE duplicate_id = students.class_id
+        )
+        WHERE class_id IN (SELECT duplicate_id FROM class_duplicate_merge_map);
+        """,
+        """
+        UPDATE scores
+        SET class_id_snapshot = (
+            SELECT keep_id
+            FROM class_duplicate_merge_map
+            WHERE duplicate_id = scores.class_id_snapshot
+        )
+        WHERE class_id_snapshot IN (SELECT duplicate_id FROM class_duplicate_merge_map);
+        """,
+        """
+        UPDATE audit_logs
+        SET class_id_snapshot = (
+            SELECT keep_id
+            FROM class_duplicate_merge_map
+            WHERE duplicate_id = audit_logs.class_id_snapshot
+        )
+        WHERE class_id_snapshot IN (SELECT duplicate_id FROM class_duplicate_merge_map);
+        """,
+        """
+        UPDATE course_assignments
+        SET class_id = (
+            SELECT keep_id
+            FROM class_duplicate_merge_map
+            WHERE duplicate_id = course_assignments.class_id
+        )
+        WHERE class_id IN (SELECT duplicate_id FROM class_duplicate_merge_map);
+        """,
+        """
+        UPDATE assign_head_teacher
+        SET class_id = (
+            SELECT keep_id
+            FROM class_duplicate_merge_map
+            WHERE duplicate_id = assign_head_teacher.class_id
+        )
+        WHERE class_id IN (SELECT duplicate_id FROM class_duplicate_merge_map);
+        """,
+    ]
+    delete_duplicate_classes_sql = """
+        DELETE FROM classes
+        WHERE id IN (SELECT duplicate_id FROM class_duplicate_merge_map);
+    """
+    unique_index_sql = """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_classes_entry_year_class_num
+        ON classes(entry_year, class_num);
+    """
+
+    db.session.execute(text(class_archive_table_sql))
+    db.session.execute(text(course_archive_table_sql))
+    db.session.execute(text(head_teacher_archive_table_sql))
+    db.session.execute(text(drop_merge_map_sql))
+    db.session.execute(text(create_merge_map_sql))
+
+    duplicate_groups = db.session.execute(text(duplicate_groups_sql)).scalar() or 0
+    duplicate_rows = db.session.execute(text(duplicate_rows_sql)).scalar() or 0
+
+    if duplicate_rows:
+        db.session.execute(text(archive_classes_sql))
+        db.session.execute(text(archive_course_conflicts_sql))
+        db.session.execute(text(archive_head_teacher_conflicts_sql))
+        db.session.execute(text(delete_course_conflicts_sql))
+        db.session.execute(text(delete_head_teacher_conflicts_sql))
+
+        for sql in update_reference_sql:
+            db.session.execute(text(sql))
+
+        db.session.execute(text(delete_duplicate_classes_sql))
+        print(
+            ">> [SQLite] 班级重复记录已合并: "
+            f"{duplicate_groups} 组，归档并删除 {duplicate_rows} 条重复班级。"
+        )
+
+    db.session.execute(text(unique_index_sql))
+
+
 def _optimize_sqlite_runtime(app):
     """
     对 SQLite 做运行时优化。
@@ -182,6 +547,7 @@ def _optimize_sqlite_runtime(app):
         for sql in pragma_sql:
             db.session.execute(text(sql))
 
+        _ensure_unique_class_records()
         _ensure_unique_score_records()
 
         for sql in index_sql:

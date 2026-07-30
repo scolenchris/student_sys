@@ -1,7 +1,8 @@
 from urllib.parse import quote
 
-from flask import jsonify, request, send_file
+from flask import g, jsonify, request, send_file
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 
 from app.models import (
     ClassInfo,
@@ -11,7 +12,12 @@ from app.models import (
     Student,
     db,
 )
+from app.services.audit_service import append_delete_audit_log
 from app.services.document_service import render_student_certificate
+from app.utils.delete_protection import (
+    build_student_delete_impact,
+    get_client_ip,
+)
 
 from . import admin_bp
 
@@ -75,10 +81,26 @@ def get_classes():
 @admin_bp.route("/classes", methods=["POST"])
 def add_class():
     data = request.get_json()
-    new_class = ClassInfo(entry_year=data["entry_year"], class_num=data["class_num"])
-    db.session.add(new_class)
-    db.session.commit()
-    return jsonify({"msg": "班级创建成功"})
+    entry_year = data.get("entry_year")
+    class_num = data.get("class_num")
+
+    if not entry_year or not class_num:
+        return jsonify({"msg": "请填写入学届和班号"}), 400
+
+    exists = ClassInfo.query.filter_by(
+        entry_year=entry_year, class_num=class_num
+    ).first()
+    if exists:
+        return jsonify({"msg": "该入学届下的班号已存在"}), 400
+
+    try:
+        new_class = ClassInfo(entry_year=entry_year, class_num=class_num)
+        db.session.add(new_class)
+        db.session.commit()
+        return jsonify({"msg": "班级创建成功"})
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"msg": "该入学届下的班号已存在"}), 409
 
 
 @admin_bp.route("/classes/<int:class_id>", methods=["DELETE"])
@@ -231,13 +253,43 @@ def update_student(s_id):
     return jsonify({"msg": "学生信息更新成功"})
 
 
+@admin_bp.route("/students/<int:s_id>/delete_impact", methods=["GET"])
+def get_student_delete_impact(s_id):
+    student = Student.query.get(s_id)
+    if not student:
+        return jsonify({"msg": "学生不存在"}), 404
+    return jsonify(build_student_delete_impact(student))
+
+
 @admin_bp.route("/students/<int:s_id>", methods=["DELETE"])
 def delete_student(s_id):
     student = Student.query.get(s_id)
     if not student:
         return jsonify({"msg": "学生不存在"}), 404
 
+    impact = build_student_delete_impact(student)
+    data = request.get_json(silent=True) or {}
+    confirmation_text = (data.get("confirmation_text") or "").strip()
+    if confirmation_text != impact["confirmation_text"]:
+        return jsonify({"msg": "确认短语不正确，已取消删除"}), 400
+
     try:
+        detail_text = (
+            f"删除学生 {student.name}({student.student_id})，"
+            f"班级 {impact['student']['class_name']}，状态 {student.status or ''}；"
+            f"同步删除成绩 {impact['score_count']} 条，涉及考试 {impact['exam_task_count']} 个，"
+            f"相关导入批次 {impact['related_import_batch_count']} 个。"
+        )
+        append_delete_audit_log(
+            action_type="student_delete",
+            source="admin_student_mgmt",
+            actor_user=getattr(g, "current_user", None),
+            target_student_no=student.student_id,
+            target_student_name=student.name,
+            class_name=impact["student"]["class_name"],
+            detail_text=detail_text,
+            client_ip=get_client_ip(request),
+        )
         Score.query.filter_by(student_id=s_id).delete()
         db.session.delete(student)
         db.session.commit()

@@ -111,17 +111,14 @@
           >
             编辑学生
           </el-button>
-          <el-popconfirm
-            title="确定要删除该学生吗？"
-            description="此操作将同步删除该学生的所有成绩记录，且不可恢复！"
-            confirm-button-text="确定删除"
-            cancel-button-text="取消"
-            @confirm="handleDelete(scope.row)"
+          <el-button
+            size="small"
+            type="danger"
+            plain
+            @click="handleDelete(scope.row)"
           >
-            <template #reference>
-              <el-button size="small" type="danger" plain>删除学生</el-button>
-            </template>
-          </el-popconfirm>
+            删除学生
+          </el-button>
           <el-button
             type="warning"
             link
@@ -251,9 +248,10 @@ import {
   importStudentsExcel,
   getStudentCertificate,
   exportStudents,
+  getStudentDeleteImpact,
   deleteStudent,
 } from "../../api/admin";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { Document, Upload, Download, Search } from "@element-plus/icons-vue";
 
 const formatClassName = (c) =>
@@ -484,11 +482,40 @@ const handleExport = async (mode) => {
 
 const handleDelete = async (row) => {
   try {
-    await deleteStudent(row.id);
-    ElMessage.success("删除成功");
+    const res = await getStudentDeleteImpact(row.id);
+    const impact = res.data;
+    const student = impact.student || row;
+    const batchIds = impact.related_import_batch_ids || [];
+    const message = [
+      `学生：${student.name}（${student.student_id}）`,
+      `当前班级：${student.class_name || row.grade_class || "未分配"}`,
+      `当前状态：${student.status || "-"}`,
+      `将同步删除成绩：${impact.score_count || 0} 条`,
+      `涉及考试：${impact.exam_task_count || 0} 个`,
+      `相关导入批次：${impact.related_import_batch_count || 0} 个${
+        batchIds.length ? `（${batchIds.join("、")}）` : ""
+      }`,
+      "",
+      `请输入确认短语：${impact.confirmation_text}`,
+    ].join("\n");
+
+    const { value } = await ElMessageBox.prompt(message, "删除学生二次确认", {
+      confirmButtonText: "确认删除",
+      cancelButtonText: "取消",
+      type: "warning",
+      inputPlaceholder: impact.confirmation_text,
+      inputValidator: (value) =>
+        String(value || "").trim() === impact.confirmation_text ||
+        "确认短语不正确",
+    });
+
+    await deleteStudent(row.id, {
+      confirmation_text: String(value || "").trim(),
+    });
+    ElMessage.success("删除成功，影响范围已写入审计日志");
     fetchStudents();
   } catch (err) {
-    console.error(err);
+    if (err === "cancel" || err === "close") return;
     ElMessage.error(err.response?.data?.msg || "删除失败");
   }
 };

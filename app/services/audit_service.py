@@ -84,3 +84,50 @@ def append_score_update_audit_log(
     )
     db.session.add(log)
     return log
+
+
+def append_delete_audit_log(
+    *,
+    action_type,
+    source,
+    actor_user,
+    detail_text,
+    target_student_no="",
+    target_student_name="",
+    exam_task_name="",
+    subject_name="",
+    class_name="",
+    client_ip="",
+):
+    actor_name = ""
+    actor_role = ""
+    actor_username = ""
+    actor_user_id = None
+    if actor_user:
+        actor_user_id = actor_user.id
+        actor_username = actor_user.username or ""
+        actor_name = (actor_user.real_name or "").strip() or actor_username
+        actor_role = actor_user.role or ""
+
+    log = AuditLog(
+        action_type=action_type,
+        source=source,
+        actor_user_id=actor_user_id,
+        actor_username=actor_username,
+        actor_real_name=actor_name,
+        actor_role=actor_role,
+        target_student_id=None,
+        target_student_no=target_student_no or "",
+        target_student_name=target_student_name or "",
+        exam_task_id=None,
+        exam_task_name=exam_task_name or "",
+        subject_name=subject_name or "",
+        class_id_snapshot=None,
+        class_name_snapshot=class_name or "",
+        old_value="",
+        new_value="",
+        detail_text=detail_text,
+        client_ip=client_ip or "",
+    )
+    db.session.add(log)
+    return log

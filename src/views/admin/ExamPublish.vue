@@ -100,14 +100,9 @@
           <el-button type="primary" link @click="editFullScore(scope.row)"
             >修改满分</el-button
           >
-          <el-popconfirm
-            title="确定删除吗？"
-            @confirm="handleDelete(scope.row.id)"
-          >
-            <template #reference>
-              <el-button type="danger" link>删除任务</el-button>
-            </template>
-          </el-popconfirm>
+          <el-button type="danger" link @click="handleDelete(scope.row)">
+            删除任务
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -211,6 +206,7 @@ import {
   addExamTask,
   updateExamTask,
   deleteExamTask,
+  getExamTaskDeleteImpact,
   getSubjects,
 } from "../../api/admin";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -365,15 +361,50 @@ const editFullScore = (row) => {
   });
 };
 
-const handleDelete = async (id) => {
+const handleDelete = async (row) => {
   try {
-    await deleteExamTask(id);
-    ElMessage.success("删除成功");
+    const res = await getExamTaskDeleteImpact(row.id);
+    const impact = res.data;
+    const task = impact.exam_task || row;
+    const classNames = impact.class_names || [];
+    const batchIds = impact.related_import_batch_ids || [];
+    const message = [
+      `考试：${task.name}`,
+      `科目：${task.subject_name || row.subject_name || "-"}`,
+      `学年：${task.academic_year}-${Number(task.academic_year) + 1}学年`,
+      `入学届：${task.entry_year}级`,
+      `将同步删除成绩：${impact.score_count || 0} 条`,
+      `涉及学生：${impact.student_count || 0} 人`,
+      `涉及班级：${impact.class_count || 0} 个${
+        classNames.length ? `（${classNames.join("、")}）` : ""
+      }`,
+      `相关导入批次：${impact.related_import_batch_count || 0} 个${
+        batchIds.length ? `（${batchIds.join("、")}）` : ""
+      }`,
+      "",
+      `请输入确认短语：${impact.confirmation_text}`,
+    ].join("\n");
+
+    const { value } = await ElMessageBox.prompt(message, "删除考试任务二次确认", {
+      confirmButtonText: "确认删除",
+      cancelButtonText: "取消",
+      type: "warning",
+      inputPlaceholder: impact.confirmation_text,
+      inputValidator: (value) =>
+        String(value || "").trim() === impact.confirmation_text ||
+        "确认短语不正确",
+    });
+
+    await deleteExamTask(row.id, {
+      confirmation_text: String(value || "").trim(),
+    });
+    ElMessage.success("删除成功，影响范围已写入审计日志");
     if (tasks.value.length === 1 && page.value > 1) {
       page.value -= 1;
     }
     fetchTasks();
   } catch (err) {
+    if (err === "cancel" || err === "close") return;
     ElMessage.error(err.response?.data?.msg || "删除失败");
   }
 };

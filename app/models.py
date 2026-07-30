@@ -74,6 +74,10 @@ class ClassInfo(db.Model):
     class_num = db.Column(db.Integer, nullable=False)
     students = db.relationship("Student", backref="current_class_rel", lazy="dynamic")
 
+    __table_args__ = (
+        UniqueConstraint("entry_year", "class_num", name="uq_class_entry_year_num"),
+    )
+
     @property
     def grade_display(self):
         # 修改：统一显示为 xx级，不再计算初一/初二/初三

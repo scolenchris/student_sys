@@ -3,9 +3,16 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from app.models import ClassInfo, ExamTask, Score, Student, Subject, db
-from app.services.audit_service import append_score_update_audit_log
+from app.services.audit_service import (
+    append_delete_audit_log,
+    append_score_update_audit_log,
+)
 from app.services.progress_service import calc_exam_task_progress
 from app.utils.academic_year import get_default_academic_year
+from app.utils.delete_protection import (
+    build_exam_task_delete_impact,
+    get_client_ip,
+)
 
 from . import admin_bp
 
@@ -119,13 +126,44 @@ def update_exam_task(id):
     return jsonify({"msg": "更新成功"})
 
 
+@admin_bp.route("/exam_tasks/<int:id>/delete_impact", methods=["GET"])
+def get_exam_task_delete_impact(id):
+    task = ExamTask.query.get(id)
+    if not task:
+        return jsonify({"msg": "任务不存在"}), 404
+    return jsonify(build_exam_task_delete_impact(task))
+
+
 @admin_bp.route("/exam_tasks/<int:id>", methods=["DELETE"])
 def delete_exam_task(id):
     task = ExamTask.query.get(id)
     if not task:
         return jsonify({"msg": "任务不存在"}), 404
 
+    impact = build_exam_task_delete_impact(task)
+    data = request.get_json(silent=True) or {}
+    confirmation_text = (data.get("confirmation_text") or "").strip()
+    if confirmation_text != impact["confirmation_text"]:
+        return jsonify({"msg": "确认短语不正确，已取消删除"}), 400
+
     try:
+        subject_name = impact["exam_task"]["subject_name"]
+        detail_text = (
+            f"删除考试任务 {task.name}"
+            f"{('-' + subject_name) if subject_name else ''}，"
+            f"学年 {task.academic_year}，入学届 {task.entry_year}；"
+            f"同步删除成绩 {impact['score_count']} 条，涉及学生 {impact['student_count']} 人，"
+            f"涉及班级 {impact['class_count']} 个，相关导入批次 {impact['related_import_batch_count']} 个。"
+        )
+        append_delete_audit_log(
+            action_type="exam_delete",
+            source="admin_exam_mgmt",
+            actor_user=getattr(g, "current_user", None),
+            exam_task_name=task.name,
+            subject_name=subject_name,
+            detail_text=detail_text,
+            client_ip=get_client_ip(request),
+        )
         Score.query.filter_by(exam_task_id=id).delete()
         db.session.delete(task)
         db.session.commit()

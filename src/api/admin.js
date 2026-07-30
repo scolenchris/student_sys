@@ -32,6 +32,8 @@ export const deleteClass = (id) => api.delete(`/classes/${id}`);
 export const getStudents = (params) => api.get("/students", { params });
 export const addStudent = (data) => api.post("/students", data);
 export const updateStudent = (id, data) => api.put(`/students/${id}`, data);
+export const getStudentDeleteImpact = (id) =>
+  api.get(`/students/${id}/delete_impact`);
 
 // 成绩统计
 export const getClassReport = (params) =>
@@ -81,7 +83,10 @@ export const resetTeacherPassword = (teacherId) =>
 export const getExamTasks = (params) => api.get("/exam_tasks", { params });
 export const addExamTask = (data) => api.post("/exam_tasks", data);
 export const updateExamTask = (id, data) => api.put(`/exam_tasks/${id}`, data);
-export const deleteExamTask = (id) => api.delete(`/exam_tasks/${id}`);
+export const getExamTaskDeleteImpact = (id) =>
+  api.get(`/exam_tasks/${id}/delete_impact`);
+export const deleteExamTask = (id, data) =>
+  api.delete(`/exam_tasks/${id}`, { data });
 
 // 任课分配导入导出
 export const importCourseAssignmentsExcel = (formData) =>
@@ -164,4 +169,5 @@ export const exportStudents = (params) =>
     responseType: "blob",
   });
 
-export const deleteStudent = (id) => api.delete(`/students/${id}`);
+export const deleteStudent = (id, data) =>
+  api.delete(`/students/${id}`, { data });
